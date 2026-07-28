@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=1280">
+<title>New Job Modal — Gother Price Intelligence</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+.radio-card { border:2px solid #e2e8f0; border-radius:8px; padding:14px 16px; cursor:pointer; display:flex; align-items:flex-start; gap:12px; transition: all 0.15s; }
+.radio-card:hover { border-color:#7dd3fc; background:#f0f9ff; }
+.radio-card.selected { border-color:#0ea5e9; background:#f0f9ff; }
+.radio-card input { margin-top:2px; accent-color:#0ea5e9; }
+.radio-label { font-size:13px; font-weight:600; color:#0f172a; }
+.radio-desc { font-size:11px; color:#64748b; margin-top:2px; }
+.badge-rec { background:#fef9c3; color:#854d0e; font-size:10px; padding:2px 6px; border-radius:4px; font-weight:700; margin-left:6px; }
+</style>
+</head>
+<body>
+<div class="screen-nav">
+  <span class="screen-nav-label">Screens:</span>
+  <a href="01-dashboard.html">1. Dashboard</a>
+  <a href="02-hotel-group-detail.html">2. Group Detail</a>
+  <a href="03-new-job-modal.html" class="active">3. New Job</a>
+  <a href="04-job-progress.html">4. Progress</a>
+  <a href="05-price-comparison-report.html">5. Report ⭐</a>
+  <a href="06-excel-import-modal.html">6. Import</a>
+  <a href="07-analytics-dashboard.html">7. Analytics</a>
+</div>
+<div class="topbar">
+  <div class="topbar-brand">⚡ Gother <span>Price Intelligence</span></div>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-meta"><span>v0.1 · Bangkok</span><div class="topbar-avatar">PW</div></div>
+</div>
+<div class="app-shell">
+  <aside class="sidebar">
+
+    <div class="service-header active">
+      <span class="service-icon">🏨</span> Hotels
+      <span class="service-chevron">▾</span>
+    </div>
+    <div class="service-items">
+      <a class="sidebar-item" href="01-dashboard.html"><span class="sidebar-icon">🏠</span> Dashboard</a>
+      <a class="sidebar-item" href="02-hotel-group-detail.html"><span class="sidebar-icon">🗂</span> Hotel Groups<span class="sidebar-badge">12</span></a>
+      <a class="sidebar-item active" href="03-new-job-modal.html"><span class="sidebar-icon">🔍</span> New Price Search</a>
+
+      <div class="sidebar-group-label">Analytics</div>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">📈</span> Market Overview</a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">🔴</span> Parity Violations<span class="sidebar-badge sidebar-badge-warn">3</span></a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">📊</span> Booking Window</a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">🏆</span> Win Rate</a>
+
+      <div class="sidebar-group-label">Data</div>
+      <a class="sidebar-item" href="#"><span class="sidebar-icon">⏰</span> Scheduled Scraping</a>
+      <a class="sidebar-item" href="06-excel-import-modal.html"><span class="sidebar-icon">📥</span> Import / Export</a>
+      <a class="sidebar-item" href="#"><span class="sidebar-icon">🔮</span> Forecasting<span class="phase-tag">Phase 4</span></a>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <div class="service-header disabled">
+      <span class="service-icon">🎭</span> Experiences
+      <span class="phase-tag">Phase 2</span>
+    </div>
+    <div class="service-header disabled">
+      <span class="service-icon">✈️</span> Flights
+      <span class="phase-tag">Phase 3</span>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-item"><span>⚙️</span> Settings</div>
+      <div class="sidebar-footer-item"><span>❓</span> Help & Docs</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div style="padding:40px 28px; display:flex; align-items:flex-start; justify-content:center;">
+      <div style="width:100%; max-width:540px;">
+        <div class="modal" style="position:relative; width:100%;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+            <div class="modal-title" style="margin-bottom:0;">🔍 New Price Search</div>
+            <button class="btn btn-ghost" onclick="window.location='02-hotel-group-detail.html'" style="font-size:18px; color:#94a3b8;">✕</button>
+          </div>
+
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 16px; margin-bottom:20px; display:flex; gap:12px; align-items:center;">
+            <span style="font-size:20px;">🏨</span>
+            <div>
+              <div style="font-size:13px; font-weight:600;">Bangkok City Hotels</div>
+              <div style="font-size:12px; color:#64748b;">24 hotels</div>
+            </div>
+          </div>
+
+          <div class="form-row" style="margin-bottom:16px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Check-in Date</label>
+              <input type="date" class="form-input" value="2026-06-20">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Check-out Date</label>
+              <input type="date" class="form-input" value="2026-06-21">
+            </div>
+          </div>
+
+          <div class="form-row" style="margin-bottom:16px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Rooms</label>
+              <select class="form-input">
+                <option selected>1 room</option>
+                <option>2 rooms</option>
+                <option>3 rooms</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Adults</label>
+              <select class="form-input">
+                <option>1 adult</option>
+                <option selected>2 adults</option>
+                <option>3 adults</option>
+                <option>4 adults</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Length of Stay Variants <span style="color:#94a3b8; font-weight:400;">(optional — scrape multiple night lengths)</span></label>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" checked> 1 night</label>
+              <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox"> 2 nights</label>
+              <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox"> 3 nights</label>
+              <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox"> 5 nights</label>
+              <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox"> 7 nights</label>
+            </div>
+            <div class="form-hint">OTAs often apply per-night discounts only visible at 3+ nights</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Scraping Method</label>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <label class="radio-card">
+                <input type="radio" name="method" value="serpapi">
+                <div>
+                  <div class="radio-label">SerpAPI — Google Hotels</div>
+                  <div class="radio-desc">Aggregates Agoda, Booking.com, Trip.com and more in one call · Method 2</div>
+                </div>
+              </label>
+              <label class="radio-card">
+                <input type="radio" name="method" value="chatgpt">
+                <div>
+                  <div class="radio-label">ChatGPT</div>
+                  <div class="radio-desc">OpenAI-powered lookup including TripAdvisor · Method 1 (bonus)</div>
+                </div>
+              </label>
+              <label class="radio-card selected">
+                <input type="radio" name="method" value="both" checked>
+                <div>
+                  <div class="radio-label">Both <span class="badge-rec">⭐ Recommended</span></div>
+                  <div class="radio-desc">Maximum source coverage — SerpAPI + ChatGPT results merged</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+            <input type="checkbox" id="force" style="accent-color:#0ea5e9;">
+            <label for="force" style="font-size:13px; color:#374151; cursor:pointer;">Force refresh <span style="color:#94a3b8;">(skip 1-hour cache)</span></label>
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="window.location='02-hotel-group-detail.html'">Cancel</button>
+            <button class="btn btn-primary" onclick="window.location='04-job-progress.html'">🚀 Start Search</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

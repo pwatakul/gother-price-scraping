@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=1280">
+<title>Price Comparison Report — Gother Price Intelligence</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+.report-table { width:100%; border-collapse:collapse; font-size:13px; }
+.report-table thead th { background:#f8fafc; padding:10px 12px; text-align:right; font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid #e2e8f0; white-space:nowrap; }
+.report-table thead th:first-child, .report-table thead th:nth-child(2) { text-align:left; }
+.report-table tbody td { padding:11px 12px; border-bottom:1px solid #f1f5f9; vertical-align:middle; text-align:right; }
+.report-table tbody td:first-child, .report-table tbody td:nth-child(2) { text-align:left; }
+.report-table tbody tr.main-row { cursor:pointer; }
+.report-table tbody tr.main-row:hover { background:#f8fafc; }
+.report-table tbody tr.expanded { background:#f0f9ff; }
+.price-cell { font-weight:600; font-size:13px; }
+.price-win { color:#16a34a; }
+.price-lose { color:#dc2626; }
+.price-dash { color:#cbd5e1; }
+.gap-win { background:#f0fdf4; color:#16a34a; font-weight:700; border-radius:5px; padding:3px 8px; font-size:12px; display:inline-block; }
+.gap-lose { background:#fef2f2; color:#dc2626; font-weight:700; border-radius:5px; padding:3px 8px; font-size:12px; display:inline-block; }
+.warn { display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; background:#fef9c3; border-radius:3px; font-size:10px; cursor:help; margin-left:4px; vertical-align:middle; }
+.evidence-panel { padding:16px 20px; border-top:1px solid #e0f2fe; }
+.evidence-table { width:100%; border-collapse:collapse; font-size:12px; }
+.evidence-table th { padding:6px 10px; text-align:left; font-size:11px; color:#64748b; font-weight:600; border-bottom:1px solid #e2e8f0; }
+.evidence-table td { padding:7px 10px; border-bottom:1px solid #f1f5f9; }
+.evidence-table tr:last-child td { border-bottom:none; }
+a.evidence-link { color:#0ea5e9; text-decoration:none; font-family: monospace; font-size:11px; }
+a.evidence-link:hover { text-decoration:underline; }
+.expand-btn { width:22px; height:22px; border-radius:4px; border:1px solid #e2e8f0; background:white; cursor:pointer; font-size:11px; display:flex; align-items:center; justify-content:center; }
+.expand-btn:hover { background:#f1f5f9; }
+</style>
+</head>
+<body>
+<div class="screen-nav">
+  <span class="screen-nav-label">Screens:</span>
+  <a href="01-dashboard.html">1. Dashboard</a>
+  <a href="02-hotel-group-detail.html">2. Group Detail</a>
+  <a href="03-new-job-modal.html">3. New Job</a>
+  <a href="04-job-progress.html">4. Progress</a>
+  <a href="05-price-comparison-report.html" class="active">5. Report ⭐</a>
+  <a href="06-excel-import-modal.html">6. Import</a>
+  <a href="07-analytics-dashboard.html">7. Analytics</a>
+</div>
+<div class="topbar">
+  <div class="topbar-brand">⚡ Gother <span>Price Intelligence</span></div>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-meta"><span>v0.1 · Bangkok</span><div class="topbar-avatar">PW</div></div>
+</div>
+<div class="app-shell">
+  <aside class="sidebar">
+
+    <div class="service-header active">
+      <span class="service-icon">🏨</span> Hotels
+      <span class="service-chevron">▾</span>
+    </div>
+    <div class="service-items">
+      <a class="sidebar-item" href="01-dashboard.html"><span class="sidebar-icon">🏠</span> Dashboard</a>
+      <a class="sidebar-item" href="02-hotel-group-detail.html"><span class="sidebar-icon">🗂</span> Hotel Groups<span class="sidebar-badge">12</span></a>
+      <a class="sidebar-item" href="03-new-job-modal.html"><span class="sidebar-icon">🔍</span> New Price Search</a>
+
+      <div class="sidebar-group-label">Analytics</div>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">📈</span> Market Overview</a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">🔴</span> Parity Violations<span class="sidebar-badge sidebar-badge-warn">3</span></a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">📊</span> Booking Window</a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">🏆</span> Win Rate</a>
+
+      <div class="sidebar-group-label">Data</div>
+      <a class="sidebar-item" href="#"><span class="sidebar-icon">⏰</span> Scheduled Scraping</a>
+      <a class="sidebar-item" href="06-excel-import-modal.html"><span class="sidebar-icon">📥</span> Import / Export</a>
+      <a class="sidebar-item" href="#"><span class="sidebar-icon">🔮</span> Forecasting<span class="phase-tag">Phase 4</span></a>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <div class="service-header disabled">
+      <span class="service-icon">🎭</span> Experiences
+      <span class="phase-tag">Phase 2</span>
+    </div>
+    <div class="service-header disabled">
+      <span class="service-icon">✈️</span> Flights
+      <span class="phase-tag">Phase 3</span>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-item"><span>⚙️</span> Settings</div>
+      <div class="sidebar-footer-item"><span>❓</span> Help & Docs</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page">
+      <a href="02-hotel-group-detail.html" class="back-link">← Bangkok City Hotels</a>
+
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:20px;">
+        <div>
+          <div class="page-title">📋 Price Comparison Report</div>
+          <div class="page-subtitle">Bangkok City Hotels · 20–21 Jun 2026 · 1 rm / 2 ad · Method: Both ·
+            <span class="badge badge-green" style="vertical-align:middle;">✅ Completed</span>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary" onclick="window.location='03-new-job-modal.html'">🔄 New Search</button>
+          <button class="btn btn-primary">📥 Export Excel</button>
+        </div>
+      </div>
+
+      <div class="kpi-grid" style="margin-bottom:20px;">
+        <div class="kpi">
+          <div class="kpi-label">Hotels Scraped</div>
+          <div class="kpi-value">24</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Successful ✅</div>
+          <div class="kpi-value" style="color:#16a34a;">22</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Failed ❌</div>
+          <div class="kpi-value" style="color:#dc2626;">2</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Avg Best Price</div>
+          <div class="kpi-value">฿ 3,840</div>
+          <div class="kpi-sub">across all hotels</div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; align-items:center; margin-bottom:16px;">
+        <input class="form-input" style="width:280px;" placeholder="🔍 Search hotels...">
+        <select class="form-input" style="width:160px;">
+          <option>All hotels</option>
+          <option>Gother winning 🟢</option>
+          <option>Gother losing 🔴</option>
+          <option>Not found ❌</option>
+        </select>
+        <select class="form-input" style="width:140px;">
+          <option>Sort: Default</option>
+          <option>Sort: Gap % ↓</option>
+          <option>Sort: Price ↑</option>
+        </select>
+        <div style="margin-left:auto; font-size:12px; color:#94a3b8;">
+          🟢 = Gother cheapest &nbsp; 🔴 = Gother losing &nbsp; ⚠️ = Not apple-to-apple
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th style="width:32px;"></th>
+                <th style="text-align:left; min-width:200px;">Hotel</th>
+                <th>Gother</th>
+                <th>Agoda</th>
+                <th>Booking.com</th>
+                <th>Trip.com</th>
+                <th>TripAdvisor</th>
+                <th>Best Source</th>
+                <th>Gap THB</th>
+                <th>Gap %</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="main-row" onclick="toggleRow('r1')">
+                <td><button class="expand-btn" id="btn-r1">▶</button></td>
+                <td><strong>Dusit Thani Bangkok</strong><br><span style="font-size:11px;color:#94a3b8;">Superior Room · Free cancellation</span></td>
+                <td class="price-cell price-win">฿ 4,200</td>
+                <td class="price-cell">฿ 4,500</td>
+                <td class="price-cell">฿ 4,350</td>
+                <td class="price-cell">฿ 4,600</td>
+                <td class="price-cell">฿ 4,480</td>
+                <td><span class="badge badge-green">Gother</span></td>
+                <td><span class="gap-win">🟢 Cheapest</span></td>
+                <td><span class="gap-win">—</span></td>
+              </tr>
+              <tr id="r1" style="display:none;">
+                <td colspan="10">
+                  <div class="evidence-panel">
+                    <div style="font-size:12px; font-weight:700; color:#0f172a; margin-bottom:10px;">Evidence — All room types & sources</div>
+                    <table class="evidence-table">
+                      <thead><tr><th>Source</th><th>Room Type</th><th>Price THB</th><th>Orig. Price</th><th>Meal Plan</th><th>Cancellation</th><th>URL</th><th>Scraped At</th></tr></thead>
+                      <tbody>
+                        <tr><td><span class="badge badge-blue">gother</span></td><td>Superior Room</td><td>฿ 4,200</td><td>฿ 4,200 THB</td><td>Room Only</td><td>Free cancellation</td><td><a class="evidence-link" href="#">gother.com/hotels/...</a></td><td>2026-04-27 02:14</td></tr>
+                        <tr><td><span class="badge badge-gray">agoda</span></td><td>Superior Room</td><td>฿ 4,500</td><td>฿ 4,500 THB</td><td>Room Only</td><td>Free cancellation</td><td><a class="evidence-link" href="#">agoda.com/hotel/...</a></td><td>2026-04-27 02:14</td></tr>
+                        <tr><td><span class="badge badge-gray">booking</span></td><td>Superior Room</td><td>฿ 4,350</td><td>฿ 4,350 THB</td><td>Room Only</td><td>Free cancellation</td><td><a class="evidence-link" href="#">booking.com/hotel/...</a></td><td>2026-04-27 02:14</td></tr>
+                        <tr><td><span class="badge badge-gray">trip.com</span></td><td>Superior Room</td><td>฿ 4,600</td><td>$ 124 USD</td><td>Room Only</td><td>Free cancellation</td><td><a class="evidence-link" href="#">trip.com/hotel/...</a></td><td>2026-04-27 02:14</td></tr>
+                        <tr><td><span class="badge badge-gray">tripadvisor</span></td><td>Superior Room</td><td>฿ 4,480</td><td>฿ 4,480 THB</td><td>Room Only</td><td>Free cancellation</td><td><a class="evidence-link" href="#">tripadvisor.com/...</a></td><td>2026-04-27 02:14</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+
+              <tr class="main-row expanded" onclick="toggleRow('r2')">
+                <td><button class="expand-btn" id="btn-r2">▼</button></td>
+                <td><strong>Mandarin Oriental Bangkok</strong><br><span style="font-size:11px;color:#94a3b8;">Superior Room · Free cancellation</span></td>
+                <td class="price-cell" style="color:#dc2626;">฿ 12,500</td>
+                <td class="price-cell">฿ 11,800 <span class="warn" title="Room type differs — Agoda: Deluxe Room vs Gother: Superior Room">⚠️</span></td>
+                <td class="price-cell">฿ 12,000</td>
+                <td class="price-cell price-dash">—</td>
+                <td class="price-cell">฿ 12,200</td>
+                <td><span class="badge badge-gray">Agoda</span></td>
+                <td><span class="gap-lose">🔴 +฿700</span></td>
+                <td><span class="gap-lose">+5.9%</span></td>
+              </tr>
+              <tr id="r2">
+                <td colspan="10">
+                  <div class="evidence-panel">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                      <div style="font-size:12px; font-weight:700; color:#0f172a;">Evidence — All room types & sources</div>
+                      <span style="font-size:11px; background:#fef9c3; color:#854d0e; padding:2px 8px; border-radius:4px;">⚠️ Room type differs on Agoda — comparison may not be apple-to-apple</span>
+                    </div>
+                    <table class="evidence-table">
+                      <thead><tr><th>Source</th><th>Room Type</th><th>Price THB</th><th>Orig. Price</th><th>Meal Plan</th><th>Cancellation</th><th>URL</th><th>Scraped At</th></tr></thead>
+                      <tbody>
+                        <tr><td><span class="badge badge-blue">gother</span></td><td>Superior Room</td><td>฿ 12,500</td><td>฿ 12,500 THB</td><td>Breakfast Incl.</td><td>Free cancellation</td><td><a class="evidence-link" href="#">gother.com/hotels/...</a></td><td>2026-04-27 02:14</td></tr>
+                        <tr style="background:#fef9c3;">
+                          <td><span class="badge badge-gray">agoda</span></td>
+                          <td>Deluxe Room <span class="warn" title="Room type differs from Gother's Superior Room">⚠️</span></td>
+                          <td>฿ 11,800</td><td>฿ 11,800 THB</td><td>Room Only <span class="warn" title="Meal plan differs — Gother includes breakfast">⚠️</span></td><td>Free cancellation</td>
+                          <td><a class="evidence-link" href="#">agoda.com/hotel/...</a></td><td>2026-04-27 02:14</td>
+                        </tr>
+                        <tr><td><span class="badge badge-gray">booking</span></td><td>Superior Room</td><td>฿ 12,000</td><td>฿ 12,000 THB</td><td>Breakfast Incl.</td><td>Free cancellation</td><td><a class="evidence-link" href="#">booking.com/hotel/...</a></td><td>2026-04-27 02:14</td></tr>
+                        <tr><td><span class="badge badge-gray">tripadvisor</span></td><td>Superior Room</td><td>฿ 12,200</td><td>฿ 12,200 THB</td><td>Breakfast Incl.</td><td>Free cancellation</td><td><a class="evidence-link" href="#">tripadvisor.com/...</a></td><td>2026-04-27 02:14</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+
+              <tr class="main-row" onclick="toggleRow('r3')">
+                <td><button class="expand-btn" id="btn-r3">▶</button></td>
+                <td><strong>The Peninsula Bangkok</strong><br><span style="font-size:11px;color:#94a3b8;">Deluxe Room · Non-refundable <span class="warn" title="Cancellation policy differs across sources">⚠️</span></span></td>
+                <td class="price-cell" style="color:#dc2626;">฿ 18,000</td>
+                <td class="price-cell">฿ 17,200</td>
+                <td class="price-cell">฿ 17,500</td>
+                <td class="price-cell">฿ 16,900</td>
+                <td class="price-cell">฿ 17,800</td>
+                <td><span class="badge badge-gray">Trip.com</span></td>
+                <td><span class="gap-lose">🔴 +฿1,100</span></td>
+                <td><span class="gap-lose">+6.5%</span></td>
+              </tr>
+              <tr id="r3" style="display:none;"><td colspan="10"><div class="evidence-panel"><div style="font-size:12px;color:#94a3b8;">Click row to expand evidence</div></div></td></tr>
+
+              <tr class="main-row" style="opacity:0.6;">
+                <td><button class="expand-btn">▶</button></td>
+                <td><strong>Hotel XYZ</strong><br><span style="font-size:11px;color:#94a3b8;">No results returned</span></td>
+                <td class="price-dash">—</td>
+                <td class="price-dash">—</td>
+                <td class="price-dash">—</td>
+                <td class="price-dash">—</td>
+                <td class="price-dash">—</td>
+                <td><span style="color:#94a3b8;">—</span></td>
+                <td colspan="2"><span class="badge badge-gray">❌ Not found</span></td>
+              </tr>
+
+              <tr style="background:#f8fafc;">
+                <td colspan="10" style="text-align:center; color:#94a3b8; font-size:12px; padding:14px;">
+                  + 20 more hotels · <a href="#" style="color:#0ea5e9; font-weight:600;">Show all</a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+function toggleRow(id) {
+  const row = document.getElementById(id);
+  const btn = document.getElementById('btn-' + id);
+  const parentRow = row.previousElementSibling;
+  if (row.style.display === 'none') {
+    row.style.display = '';
+    btn.textContent = '▼';
+    parentRow.classList.add('expanded');
+  } else {
+    row.style.display = 'none';
+    btn.textContent = '▶';
+    parentRow.classList.remove('expanded');
+  }
+}
+</script>
+</body>
+</html>

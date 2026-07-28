@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=1280">
+<title>Job Progress — Gother Price Intelligence</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+.hotel-status-row { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid #f1f5f9; }
+.hotel-status-row:last-child { border-bottom:none; }
+.status-icon { width:24px; text-align:center; font-size:15px; flex-shrink:0; }
+.hotel-status-name { flex:1; font-size:13px; font-weight:500; }
+.hotel-status-detail { font-size:12px; color:#64748b; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="screen-nav">
+  <span class="screen-nav-label">Screens:</span>
+  <a href="01-dashboard.html">1. Dashboard</a>
+  <a href="02-hotel-group-detail.html">2. Group Detail</a>
+  <a href="03-new-job-modal.html">3. New Job</a>
+  <a href="04-job-progress.html" class="active">4. Progress</a>
+  <a href="05-price-comparison-report.html">5. Report ⭐</a>
+  <a href="06-excel-import-modal.html">6. Import</a>
+  <a href="07-analytics-dashboard.html">7. Analytics</a>
+</div>
+<div class="topbar">
+  <div class="topbar-brand">⚡ Gother <span>Price Intelligence</span></div>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-meta"><span>v0.1 · Bangkok</span><div class="topbar-avatar">PW</div></div>
+</div>
+<div class="app-shell">
+  <aside class="sidebar">
+
+    <div class="service-header active">
+      <span class="service-icon">🏨</span> Hotels
+      <span class="service-chevron">▾</span>
+    </div>
+    <div class="service-items">
+      <a class="sidebar-item" href="01-dashboard.html"><span class="sidebar-icon">🏠</span> Dashboard</a>
+      <a class="sidebar-item" href="02-hotel-group-detail.html"><span class="sidebar-icon">🗂</span> Hotel Groups<span class="sidebar-badge">12</span></a>
+      <a class="sidebar-item" href="03-new-job-modal.html"><span class="sidebar-icon">🔍</span> New Price Search</a>
+
+      <div class="sidebar-group-label">Analytics</div>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">📈</span> Market Overview</a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">🔴</span> Parity Violations<span class="sidebar-badge sidebar-badge-warn">3</span></a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">📊</span> Booking Window</a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">🏆</span> Win Rate</a>
+
+      <div class="sidebar-group-label">Data</div>
+      <a class="sidebar-item" href="#"><span class="sidebar-icon">⏰</span> Scheduled Scraping</a>
+      <a class="sidebar-item" href="06-excel-import-modal.html"><span class="sidebar-icon">📥</span> Import / Export</a>
+      <a class="sidebar-item" href="#"><span class="sidebar-icon">🔮</span> Forecasting<span class="phase-tag">Phase 4</span></a>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <div class="service-header disabled">
+      <span class="service-icon">🎭</span> Experiences
+      <span class="phase-tag">Phase 2</span>
+    </div>
+    <div class="service-header disabled">
+      <span class="service-icon">✈️</span> Flights
+      <span class="phase-tag">Phase 3</span>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-item"><span>⚙️</span> Settings</div>
+      <div class="sidebar-footer-item"><span>❓</span> Help & Docs</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page">
+      <a href="02-hotel-group-detail.html" class="back-link">← Bangkok City Hotels</a>
+
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:24px;">
+        <div>
+          <div class="page-title">⏳ Price Search: 20–21 Jun 2026</div>
+          <div class="page-subtitle">1 room · 2 adults · Method: Both (SerpAPI + ChatGPT) · Job ID: job_001</div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <span class="badge badge-yellow" style="font-size:13px; padding:6px 14px;">⏳ Processing</span>
+          <button class="btn btn-danger btn-sm">❌ Cancel Job</button>
+        </div>
+      </div>
+
+      <div class="kpi-grid" style="margin-bottom:24px;">
+        <div class="kpi">
+          <div class="kpi-label">Total Hotels</div>
+          <div class="kpi-value">24</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Completed ✅</div>
+          <div class="kpi-value" style="color:#16a34a;">14</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Failed ❌</div>
+          <div class="kpi-value" style="color:#dc2626;">1</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Pending ⏳</div>
+          <div class="kpi-value" style="color:#d97706;">9</div>
+        </div>
+      </div>
+
+      <div class="card card-body" style="margin-bottom:24px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <span style="font-size:13px; font-weight:600;">Overall Progress</span>
+          <span style="font-size:13px; color:#64748b;">14 / 24 hotels · ~2 min remaining</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:58%;"></div>
+        </div>
+        <div style="margin-top:8px; font-size:11px; color:#94a3b8;">Polling every 3 seconds · Last updated: just now</div>
+      </div>
+
+      <div class="card">
+        <div style="padding:16px 20px; border-bottom:1px solid #f1f5f9;">
+          <div style="font-size:14px; font-weight:700;">Hotel Status Log</div>
+        </div>
+        <div style="padding:4px 20px;">
+          <div class="hotel-status-row">
+            <div class="status-icon">✅</div>
+            <div class="hotel-status-name">Dusit Thani Bangkok</div>
+            <div class="hotel-status-detail">3 sources found · SerpAPI + ChatGPT</div>
+            <div style="font-size:12px; color:#16a34a; font-weight:600;">฿ 4,200 best</div>
+          </div>
+          <div class="hotel-status-row">
+            <div class="status-icon">✅</div>
+            <div class="hotel-status-name">Mandarin Oriental Bangkok</div>
+            <div class="hotel-status-detail">4 sources found · SerpAPI + ChatGPT</div>
+            <div style="font-size:12px; color:#dc2626; font-weight:600;">+฿700 vs OTA</div>
+          </div>
+          <div class="hotel-status-row">
+            <div class="status-icon">✅</div>
+            <div class="hotel-status-name">The Peninsula Bangkok</div>
+            <div class="hotel-status-detail">4 sources found · SerpAPI + ChatGPT</div>
+            <div style="font-size:12px; color:#dc2626; font-weight:600;">+฿1,100 vs OTA</div>
+          </div>
+          <div class="hotel-status-row">
+            <div class="status-icon" style="animation: spin 1s linear infinite;">⏳</div>
+            <div class="hotel-status-name">Anantara Riverside Bangkok</div>
+            <div class="hotel-status-detail" style="color:#d97706;">Searching... SerpAPI in progress</div>
+            <div style="font-size:12px; color:#94a3b8;">—</div>
+          </div>
+          <div class="hotel-status-row">
+            <div class="status-icon">⏳</div>
+            <div class="hotel-status-name">Capella Bangkok</div>
+            <div class="hotel-status-detail" style="color:#d97706;">Searching... ChatGPT in progress</div>
+            <div style="font-size:12px; color:#94a3b8;">—</div>
+          </div>
+          <div class="hotel-status-row">
+            <div class="status-icon">❌</div>
+            <div class="hotel-status-name">Hotel XYZ</div>
+            <div class="hotel-status-detail" style="color:#dc2626;">Not found — no matching results from any source</div>
+            <div style="font-size:12px; color:#dc2626;">Error</div>
+          </div>
+          <div class="hotel-status-row">
+            <div class="status-icon" style="color:#94a3b8;">○</div>
+            <div class="hotel-status-name" style="color:#94a3b8;">Rosewood Bangkok</div>
+            <div class="hotel-status-detail" style="color:#cbd5e1;">Queued</div>
+            <div style="font-size:12px; color:#94a3b8;">—</div>
+          </div>
+          <div class="hotel-status-row" style="border-bottom:none;">
+            <div class="hotel-status-name" style="color:#94a3b8; text-align:center; width:100%; font-size:12px;">+ 17 more hotels queued</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:20px; padding:16px 20px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; display:flex; align-items:center; gap:12px; opacity:0.4;">
+        <span style="font-size:20px;">✅</span>
+        <div style="flex:1;">
+          <div style="font-size:13px; font-weight:700; color:#15803d;">Job Complete — Results Ready</div>
+          <div style="font-size:12px; color:#16a34a;">22 hotels found · 2 failed · Avg best price: ฿ 3,840</div>
+        </div>
+        <button class="btn btn-primary" onclick="window.location='05-price-comparison-report.html'" style="background:#16a34a;">View Report →</button>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

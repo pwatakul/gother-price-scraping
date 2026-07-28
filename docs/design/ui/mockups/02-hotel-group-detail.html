@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=1280">
+<title>Hotel Group Detail — Gother Price Intelligence</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<div class="screen-nav">
+  <span class="screen-nav-label">Screens:</span>
+  <a href="01-dashboard.html">1. Dashboard</a>
+  <a href="02-hotel-group-detail.html" class="active">2. Group Detail</a>
+  <a href="03-new-job-modal.html">3. New Job</a>
+  <a href="04-job-progress.html">4. Progress</a>
+  <a href="05-price-comparison-report.html">5. Report ⭐</a>
+  <a href="06-excel-import-modal.html">6. Import</a>
+  <a href="07-analytics-dashboard.html">7. Analytics</a>
+</div>
+<div class="topbar">
+  <div class="topbar-brand">⚡ Gother <span>Price Intelligence</span></div>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-meta"><span>v0.1 · Bangkok</span><div class="topbar-avatar">PW</div></div>
+</div>
+<div class="app-shell">
+  <aside class="sidebar">
+
+    <div class="service-header active">
+      <span class="service-icon">🏨</span> Hotels
+      <span class="service-chevron">▾</span>
+    </div>
+    <div class="service-items">
+      <a class="sidebar-item" href="01-dashboard.html"><span class="sidebar-icon">🏠</span> Dashboard</a>
+      <a class="sidebar-item active" href="02-hotel-group-detail.html"><span class="sidebar-icon">🗂</span> Hotel Groups<span class="sidebar-badge">12</span></a>
+      <a class="sidebar-item" href="03-new-job-modal.html"><span class="sidebar-icon">🔍</span> New Price Search</a>
+
+      <div class="sidebar-group-label">Analytics</div>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">📈</span> Market Overview</a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">🔴</span> Parity Violations<span class="sidebar-badge sidebar-badge-warn">3</span></a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">📊</span> Booking Window</a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">🏆</span> Win Rate</a>
+
+      <div class="sidebar-group-label">Data</div>
+      <a class="sidebar-item" href="#"><span class="sidebar-icon">⏰</span> Scheduled Scraping</a>
+      <a class="sidebar-item" href="06-excel-import-modal.html"><span class="sidebar-icon">📥</span> Import / Export</a>
+      <a class="sidebar-item" href="#"><span class="sidebar-icon">🔮</span> Forecasting<span class="phase-tag">Phase 4</span></a>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <div class="service-header disabled">
+      <span class="service-icon">🎭</span> Experiences
+      <span class="phase-tag">Phase 2</span>
+    </div>
+    <div class="service-header disabled">
+      <span class="service-icon">✈️</span> Flights
+      <span class="phase-tag">Phase 3</span>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-item"><span>⚙️</span> Settings</div>
+      <div class="sidebar-footer-item"><span>❓</span> Help & Docs</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page">
+      <a href="01-dashboard.html" class="back-link">← Back to Dashboard</a>
+      <div class="page-header">
+        <div>
+          <div class="page-title">🏨 Bangkok City Hotels</div>
+          <div class="page-subtitle">24 hotels · Created 2026-03-10 · Group ID: grp_abc123</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary">✏️ Edit</button>
+          <button class="btn btn-danger">🗑 Delete</button>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex; gap:10px; margin-bottom:22px;">
+        <button class="btn btn-secondary" onclick="window.location='06-excel-import-modal.html'">📥 Import Excel</button>
+        <button class="btn btn-secondary">＋ Add Hotel</button>
+        <button class="btn btn-primary" onclick="window.location='03-new-job-modal.html'">🔍 New Price Search</button>
+      </div>
+
+      <!-- Hotels table -->
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header">
+          <div class="card-title">Hotels (24)</div>
+          <input class="form-input" style="width:220px;" placeholder="🔍 Search hotels...">
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Hotel Name</th><th>City</th><th>Country</th>
+                <th>Last Price (THB)</th><th>Source</th><th>vs Best OTA</th><th>Scraped</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Dusit Thani Bangkok</strong></td><td>Bangkok</td><td>Thailand</td>
+                <td style="font-weight:700;">฿ 4,200</td>
+                <td><span class="badge badge-sky">gother</span></td>
+                <td><span class="badge badge-green">🟢 Cheapest</span></td>
+                <td class="text-muted text-sm">today 02:14</td>
+                <td><button class="btn btn-ghost btn-sm" onclick="window.location='05-price-comparison-report.html'">Report →</button></td>
+              </tr>
+              <tr>
+                <td><strong>Mandarin Oriental Bangkok</strong></td><td>Bangkok</td><td>Thailand</td>
+                <td style="font-weight:700; color:#dc2626;">฿ 12,500</td>
+                <td><span class="badge badge-sky">gother</span></td>
+                <td><span class="badge badge-red">🔴 +฿700 (+5.9%)</span></td>
+                <td class="text-muted text-sm">today 02:14</td>
+                <td><button class="btn btn-ghost btn-sm" onclick="window.location='05-price-comparison-report.html'">Report →</button></td>
+              </tr>
+              <tr>
+                <td><strong>The Peninsula Bangkok</strong></td><td>Bangkok</td><td>Thailand</td>
+                <td style="font-weight:700; color:#dc2626;">฿ 18,000</td>
+                <td><span class="badge badge-sky">gother</span></td>
+                <td><span class="badge badge-red">🔴 +฿1,100 (+6.5%)</span></td>
+                <td class="text-muted text-sm">today 02:14</td>
+                <td><button class="btn btn-ghost btn-sm">Report →</button></td>
+              </tr>
+              <tr>
+                <td><strong>Anantara Riverside</strong></td><td>Bangkok</td><td>Thailand</td>
+                <td style="font-weight:700;">฿ 6,800</td>
+                <td><span class="badge badge-sky">gother</span></td>
+                <td><span class="badge badge-green">🟢 Cheapest</span></td>
+                <td class="text-muted text-sm">today 02:15</td>
+                <td><button class="btn btn-ghost btn-sm">Report →</button></td>
+              </tr>
+              <tr>
+                <td><strong>Hotel XYZ</strong></td><td>Bangkok</td><td>Thailand</td>
+                <td style="color:#94a3b8;">—</td><td style="color:#94a3b8;">—</td>
+                <td><span class="badge badge-gray">❌ Not found</span></td>
+                <td class="text-muted text-sm">today 02:15</td>
+                <td><button class="btn btn-ghost btn-sm">Report →</button></td>
+              </tr>
+              <tr style="background:#f8fafc;">
+                <td colspan="8" style="text-align:center; color:#94a3b8; font-size:12px; padding:10px;">
+                  + 19 more hotels · <a href="#" style="color:#0ea5e9;">Show all</a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Recent Jobs -->
+      <div class="card">
+        <div class="card-header"><div class="card-title">Recent Price Search Jobs</div></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Job ID</th><th>Check-in / out</th><th>Guests</th><th>Method</th><th>Status</th><th>Hotels</th><th>Created</th><th></th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="font-mono">job_001</td><td>20–21 Jun 2026</td><td>1 rm / 2 ad</td>
+                <td><span class="badge badge-purple">Both</span></td>
+                <td><span class="badge badge-green">✅ Completed</span></td>
+                <td>24 / 24</td><td class="text-muted text-sm">today 02:14</td>
+                <td><button class="btn btn-ghost btn-sm" onclick="window.location='05-price-comparison-report.html'">View Report →</button></td>
+              </tr>
+              <tr>
+                <td class="font-mono">job_002</td><td>15–16 Jul 2026</td><td>2 rm / 2 ad</td>
+                <td><span class="badge badge-blue">SerpAPI</span></td>
+                <td><span class="badge badge-yellow">⏳ Processing</span></td>
+                <td>14 / 24</td><td class="text-muted text-sm">today 03:00</td>
+                <td><button class="btn btn-ghost btn-sm" onclick="window.location='04-job-progress.html'">View Progress →</button></td>
+              </tr>
+              <tr>
+                <td class="font-mono">job_003</td><td>01–02 Aug 2026</td><td>1 rm / 2 ad</td>
+                <td><span class="badge badge-purple">Both</span></td>
+                <td><span class="badge badge-red">❌ Failed (2)</span></td>
+                <td>22 / 24</td><td class="text-muted text-sm">yesterday</td>
+                <td><button class="btn btn-ghost btn-sm">View Report →</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

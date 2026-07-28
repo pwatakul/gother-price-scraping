@@ -1,0 +1,34 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / notes tooling
+.obsidian/
+.vscode/
+.idea/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+gother-price-code/backend/.env
+gother-price-code/backend/.env.*
+!gother-price-code/backend/.env.example
+
+# Rust (backend)
+gother-price-code/backend/target/
+gother-price-code/backend/**/*.rs.bk
+
+# Node / frontend
+gother-price-code/frontend/node_modules/
+gother-price-code/frontend/dist/
+gother-price-code/frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker
+docker/.env
+
+# Logs
+*.log

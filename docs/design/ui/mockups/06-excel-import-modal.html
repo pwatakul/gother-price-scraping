@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=1280">
+<title>Import Hotels — Gother Price Intelligence</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+.drop-zone { border:2px dashed #cbd5e1; border-radius:10px; padding:48px; text-align:center; background:#f8fafc; cursor:pointer; transition: all 0.15s; }
+.drop-zone:hover { border-color:#0ea5e9; background:#f0f9ff; }
+.preview-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:12px; }
+.preview-table th { background:#f8fafc; padding:7px 10px; text-align:left; font-size:11px; color:#64748b; font-weight:600; border:1px solid #e2e8f0; white-space:nowrap; }
+.preview-table td { padding:7px 10px; border:1px solid #f1f5f9; }
+.preview-table tr:nth-child(even) td { background:#f8fafc; }
+</style>
+</head>
+<body>
+<div class="screen-nav">
+  <span class="screen-nav-label">Screens:</span>
+  <a href="01-dashboard.html">1. Dashboard</a>
+  <a href="02-hotel-group-detail.html">2. Group Detail</a>
+  <a href="03-new-job-modal.html">3. New Job</a>
+  <a href="04-job-progress.html">4. Progress</a>
+  <a href="05-price-comparison-report.html">5. Report ⭐</a>
+  <a href="06-excel-import-modal.html" class="active">6. Import</a>
+  <a href="07-analytics-dashboard.html">7. Analytics</a>
+</div>
+<div class="topbar">
+  <div class="topbar-brand">⚡ Gother <span>Price Intelligence</span></div>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-meta"><span>v0.1 · Bangkok</span><div class="topbar-avatar">PW</div></div>
+</div>
+<div class="app-shell">
+  <aside class="sidebar">
+
+    <div class="service-header active">
+      <span class="service-icon">🏨</span> Hotels
+      <span class="service-chevron">▾</span>
+    </div>
+    <div class="service-items">
+      <a class="sidebar-item" href="01-dashboard.html"><span class="sidebar-icon">🏠</span> Dashboard</a>
+      <a class="sidebar-item" href="02-hotel-group-detail.html"><span class="sidebar-icon">🗂</span> Hotel Groups<span class="sidebar-badge">12</span></a>
+      <a class="sidebar-item" href="03-new-job-modal.html"><span class="sidebar-icon">🔍</span> New Price Search</a>
+
+      <div class="sidebar-group-label">Analytics</div>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">📈</span> Market Overview</a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">🔴</span> Parity Violations<span class="sidebar-badge sidebar-badge-warn">3</span></a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">📊</span> Booking Window</a>
+      <a class="sidebar-item" href="07-analytics-dashboard.html"><span class="sidebar-icon">🏆</span> Win Rate</a>
+
+      <div class="sidebar-group-label">Data</div>
+      <a class="sidebar-item" href="#"><span class="sidebar-icon">⏰</span> Scheduled Scraping</a>
+      <a class="sidebar-item active" href="06-excel-import-modal.html"><span class="sidebar-icon">📥</span> Import / Export</a>
+      <a class="sidebar-item" href="#"><span class="sidebar-icon">🔮</span> Forecasting<span class="phase-tag">Phase 4</span></a>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <div class="service-header disabled">
+      <span class="service-icon">🎭</span> Experiences
+      <span class="phase-tag">Phase 2</span>
+    </div>
+    <div class="service-header disabled">
+      <span class="service-icon">✈️</span> Flights
+      <span class="phase-tag">Phase 3</span>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-item"><span>⚙️</span> Settings</div>
+      <div class="sidebar-footer-item"><span>❓</span> Help & Docs</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div style="padding:40px 28px; display:flex; align-items:flex-start; justify-content:center;">
+      <div style="width:100%; max-width:800px;">
+        <div class="modal" style="width:100%; max-width:800px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+            <div class="modal-title" style="margin-bottom:0;">📥 Import Hotels from Excel</div>
+            <button class="btn btn-ghost" onclick="window.location='02-hotel-group-detail.html'" style="font-size:18px; color:#94a3b8;">✕</button>
+          </div>
+
+          <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:12px 16px; margin-bottom:20px; display:flex; align-items:center; gap:10px;">
+            <span style="font-size:18px;">📄</span>
+            <div style="flex:1;">
+              <div style="font-size:13px; font-weight:600; color:#0369a1;">Download the Excel template</div>
+              <div style="font-size:12px; color:#0ea5e9;">Required columns: hotel_name, city, country · Optional per-row: checkin_date, checkout_date, rooms, adults, currency</div>
+            </div>
+            <button class="btn btn-secondary btn-sm">⬇ Download Template</button>
+          </div>
+
+          <div style="margin-bottom:20px;">
+            <div style="font-size:12px; font-weight:600; color:#374151; margin-bottom:8px;">Required & optional columns:</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <span class="badge badge-blue">hotel_name *</span>
+              <span class="badge badge-blue">city *</span>
+              <span class="badge badge-blue">country *</span>
+              <span class="badge badge-gray">checkin_date</span>
+              <span class="badge badge-gray">checkout_date</span>
+              <span class="badge badge-gray">rooms</span>
+              <span class="badge badge-gray">adults</span>
+              <span class="badge badge-gray">currency</span>
+            </div>
+            <div style="font-size:11px; color:#94a3b8; margin-top:6px;">* Required &nbsp; · &nbsp; Optional columns fall back to job-level defaults when blank</div>
+          </div>
+
+          <div class="drop-zone" id="drop-zone" onclick="showPreview()">
+            <div style="font-size:40px; margin-bottom:12px;">📁</div>
+            <div style="font-size:15px; font-weight:600; color:#374151;">Drop .xlsx file here</div>
+            <div style="font-size:13px; color:#94a3b8; margin-top:4px;">or click to browse your computer</div>
+            <div style="font-size:11px; color:#cbd5e1; margin-top:12px;">Supports .xlsx format · Max 10MB</div>
+          </div>
+
+          <div id="preview-section" style="display:none;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+              <span style="font-size:16px;">✅</span>
+              <div>
+                <div style="font-size:13px; font-weight:600; color:#15803d;">bangkok_hotels.xlsx uploaded</div>
+                <div style="font-size:12px; color:#16a34a;">24 rows detected · All required columns found</div>
+              </div>
+              <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="showDropzone()">✕ Remove</button>
+            </div>
+            <div style="font-size:12px; font-weight:600; color:#374151; margin-bottom:6px;">Preview (first 3 rows):</div>
+            <div style="overflow-x:auto;">
+              <table class="preview-table">
+                <thead>
+                  <tr><th>#</th><th>hotel_name</th><th>city</th><th>country</th><th>checkin_date</th><th>checkout_date</th><th>rooms</th><th>adults</th><th>currency</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="color:#94a3b8;">1</td><td><strong>Dusit Thani Bangkok</strong></td>
+                    <td>Bangkok</td><td>Thailand</td><td>2026-06-20</td><td>2026-06-21</td><td>1</td><td>2</td><td>THB</td>
+                  </tr>
+                  <tr>
+                    <td style="color:#94a3b8;">2</td><td><strong>Mandarin Oriental Bangkok</strong></td>
+                    <td>Bangkok</td><td>Thailand</td><td>2026-06-20</td><td>2026-06-21</td><td>1</td><td>2</td><td>THB</td>
+                  </tr>
+                  <tr>
+                    <td style="color:#94a3b8;">3</td><td><strong>The Peninsula Bangkok</strong></td>
+                    <td>Bangkok</td><td>Thailand</td>
+                    <td style="color:#94a3b8; font-style:italic;">— (job default)</td>
+                    <td style="color:#94a3b8; font-style:italic;">— (job default)</td>
+                    <td style="color:#94a3b8; font-style:italic;">— (job default)</td>
+                    <td style="color:#94a3b8; font-style:italic;">— (job default)</td>
+                    <td>THB</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div style="font-size:12px; color:#64748b; margin-top:8px; padding:8px 12px; background:#f8fafc; border-radius:6px;">
+              ℹ️ Blank cells in optional columns use the job-level defaults set when you start the price search
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="window.location='02-hotel-group-detail.html'">Cancel</button>
+            <button class="btn btn-primary" id="import-btn" disabled style="opacity:0.5;" onclick="window.location='02-hotel-group-detail.html'">✅ Import 24 Hotels</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+function showPreview() {
+  document.getElementById('drop-zone').style.display = 'none';
+  document.getElementById('preview-section').style.display = 'block';
+  const btn = document.getElementById('import-btn');
+  btn.disabled = false; btn.style.opacity = '1';
+}
+function showDropzone() {
+  document.getElementById('drop-zone').style.display = 'block';
+  document.getElementById('preview-section').style.display = 'none';
+  const btn = document.getElementById('import-btn');
+  btn.disabled = true; btn.style.opacity = '0.5';
+}
+</script>
+</body>
+</html>
