@@ -29,6 +29,53 @@ impl std::fmt::Display for ScrapeJobStatus {
     }
 }
 
+/// Which scraper(s) produce results for a job (REQ-001 F-020/F-022).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "scrape_method", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum ScrapeMethod {
+    Serpapi,
+    Chatgpt,
+    Gemini,
+    Both,
+}
+
+impl Default for ScrapeMethod {
+    fn default() -> Self {
+        ScrapeMethod::Serpapi
+    }
+}
+
+/// Device dimension (REQ-001 F-023).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "device_type", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum Device {
+    Desktop,
+    MobileWeb,
+}
+
+impl Default for Device {
+    fn default() -> Self {
+        Device::Desktop
+    }
+}
+
+/// Login-state dimension (REQ-001 F-024).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "login_state_type", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum LoginState {
+    Public,
+    Member,
+}
+
+impl Default for LoginState {
+    fn default() -> Self {
+        LoginState::Public
+    }
+}
+
 /// Scrape Job - a price scraping request
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ScrapeJob {
@@ -40,6 +87,10 @@ pub struct ScrapeJob {
     pub adults: i32,
     pub status: ScrapeJobStatus,
     pub force_refresh: bool,
+    pub method: ScrapeMethod,
+    pub los_variants: Vec<i32>,
+    pub device: Device,
+    pub login_state: LoginState,
     pub created_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
 }
@@ -54,6 +105,51 @@ pub struct CreateScrapeJobRequest {
     pub adults: i32,
     #[serde(default)]
     pub force_refresh: bool,
+    #[serde(default)]
+    pub method: ScrapeMethod,
+    /// Length-of-stay variants in nights; defaults to a single 1-night pass.
+    #[serde(default = "default_los_variants")]
+    pub los_variants: Vec<i32>,
+    #[serde(default)]
+    pub device: Device,
+    #[serde(default)]
+    pub login_state: LoginState,
+}
+
+fn default_los_variants() -> Vec<i32> {
+    vec![1]
+}
+
+/// Job-level defaults used to fill in any field a per-hotel override
+/// (`scrape_job_hotel_params`) leaves blank.
+#[derive(Debug, Clone, Copy)]
+pub struct JobDefaults {
+    pub checkin_date: NaiveDate,
+    pub checkout_date: NaiveDate,
+    pub rooms: i32,
+    pub adults: i32,
+}
+
+impl From<&CreateScrapeJobRequest> for JobDefaults {
+    fn from(req: &CreateScrapeJobRequest) -> Self {
+        JobDefaults {
+            checkin_date: req.checkin_date,
+            checkout_date: req.checkout_date,
+            rooms: req.rooms,
+            adults: req.adults,
+        }
+    }
+}
+
+impl From<&ScrapeJob> for JobDefaults {
+    fn from(job: &ScrapeJob) -> Self {
+        JobDefaults {
+            checkin_date: job.checkin_date,
+            checkout_date: job.checkout_date,
+            rooms: job.rooms,
+            adults: job.adults,
+        }
+    }
 }
 
 /// Scrape job with progress information
@@ -66,6 +162,9 @@ pub struct ScrapeJobWithProgress {
     pub rooms: i32,
     pub adults: i32,
     pub status: ScrapeJobStatus,
+    pub method: ScrapeMethod,
+    pub device: Device,
+    pub login_state: LoginState,
     pub progress: ScrapeProgress,
     pub created_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
@@ -90,4 +189,8 @@ pub struct ScrapeJobMessage {
     pub rooms: i32,
     pub adults: i32,
     pub force_refresh: bool,
+    pub method: ScrapeMethod,
+    pub los_variants: Vec<i32>,
+    pub device: Device,
+    pub login_state: LoginState,
 }

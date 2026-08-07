@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { CheckCircle2, XCircle, Loader2, Circle } from 'lucide-react';
 import { Progress } from '@/components/ui/Progress';
 import { Button } from '@/components/ui/Button';
@@ -10,65 +9,88 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/Dialog';
-import type { ScrapeJobWithProgress } from '@/types';
-import { formatPercentage } from '@/utils/format';
+import type { HotelPriceComparison, HotelScrapeStatus, ScrapeResultsResponse } from '@/types';
+import { formatPercentage, formatPrice } from '@/utils/format';
 
 interface ProgressTrackerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  job: ScrapeJobWithProgress | null;
+  results: ScrapeResultsResponse | null;
   onCancel: () => void;
   onViewResults: () => void;
   isLoading?: boolean;
 }
 
+function statusIcon(status: HotelScrapeStatus) {
+  switch (status) {
+    case 'success':
+      return <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />;
+    case 'failed':
+      return <XCircle className="h-4 w-4 text-red-600 shrink-0" />;
+    case 'processing':
+      return <Loader2 className="h-4 w-4 text-sky-600 animate-spin shrink-0" />;
+    default:
+      return <Circle className="h-4 w-4 text-gray-300 shrink-0" />;
+  }
+}
+
 export function ProgressTracker({
   open,
   onOpenChange,
-  job,
+  results,
   onCancel,
   onViewResults,
   isLoading,
 }: ProgressTrackerProps) {
-  if (!job) return null;
+  if (!results) return null;
 
-  const { progress, status } = job;
-  const total = progress.total;
-  const completed = progress.completed + progress.failed;
-  const percentage = total > 0 ? (completed / total) * 100 : 0;
+  const { job, results: hotelResults } = results;
 
-  const isComplete = status === 'completed';
-  const isFailed = status === 'failed';
-  const isCancelled = status === 'cancelled';
-  const isRunning = status === 'processing' || status === 'pending';
+  const counts = hotelResults.reduce(
+    (acc, r) => {
+      if (r.status === 'success') acc.completed += 1;
+      else if (r.status === 'failed') acc.failed += 1;
+      else acc.pending += 1;
+      return acc;
+    },
+    { completed: 0, failed: 0, pending: 0 }
+  );
+  const total = hotelResults.length;
+  const done = counts.completed + counts.failed;
+  const percentage = total > 0 ? (done / total) * 100 : 0;
+
+  const isComplete = job.status === 'completed';
+  const isFailed = job.status === 'failed';
+  const isCancelled = job.status === 'cancelled';
+  const isRunning = job.status === 'processing' || job.status === 'pending';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>
             {isComplete
-              ? 'Scraping Complete'
+              ? '✅ Scraping Complete'
               : isFailed
-              ? 'Scraping Failed'
+              ? '❌ Scraping Failed'
               : isCancelled
               ? 'Scraping Cancelled'
-              : 'Scraping in Progress'}
+              : '⏳ Scraping in Progress'}
           </DialogTitle>
           <DialogDescription>
             {isComplete
               ? 'Price comparison is ready to view'
               : isRunning
-              ? 'Fetching prices from multiple sources...'
+              ? 'Fetching prices from multiple sources... polling every 5 seconds'
               : 'The job has been stopped'}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-4 space-y-4">
+        <div className="py-2 space-y-4">
           {/* Progress Bar */}
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span>Progress</span>
+              <span>Overall Progress</span>
               <span>{formatPercentage(percentage)}</span>
             </div>
             <Progress value={percentage} className="h-3" />
@@ -77,61 +99,46 @@ export function ProgressTracker({
           {/* Stats */}
           <div className="grid grid-cols-3 gap-4 text-center">
             <div className="p-3 bg-muted rounded-lg">
-              <div className="text-2xl font-bold text-green-600">
-                {progress.completed}
-              </div>
+              <div className="text-2xl font-bold text-green-600">{counts.completed}</div>
               <div className="text-xs text-muted-foreground">Success</div>
             </div>
             <div className="p-3 bg-muted rounded-lg">
-              <div className="text-2xl font-bold text-red-600">
-                {progress.failed}
-              </div>
+              <div className="text-2xl font-bold text-red-600">{counts.failed}</div>
               <div className="text-xs text-muted-foreground">Failed</div>
             </div>
             <div className="p-3 bg-muted rounded-lg">
-              <div className="text-2xl font-bold text-yellow-600">
-                {progress.pending}
-              </div>
+              <div className="text-2xl font-bold text-amber-600">{counts.pending}</div>
               <div className="text-xs text-muted-foreground">Pending</div>
             </div>
           </div>
 
-          {/* Status Indicator */}
-          <div className="flex items-center justify-center gap-2 text-sm">
-            {isRunning && (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                <span className="text-blue-600">Processing...</span>
-              </>
-            )}
-            {isComplete && (
-              <>
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                <span className="text-green-600">Completed</span>
-              </>
-            )}
-            {isFailed && (
-              <>
-                <XCircle className="h-4 w-4 text-red-600" />
-                <span className="text-red-600">Failed</span>
-              </>
-            )}
-            {isCancelled && (
-              <>
-                <Circle className="h-4 w-4 text-gray-600" />
-                <span className="text-gray-600">Cancelled</span>
-              </>
-            )}
+          {/* Per-hotel status log */}
+          <div className="border rounded-lg max-h-64 overflow-y-auto divide-y">
+            {hotelResults.map((r: HotelPriceComparison) => (
+              <div key={r.hotel.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                {statusIcon(r.status)}
+                <span className="flex-1 min-w-0 truncate">{r.hotel.name}</span>
+                {r.status === 'processing' && (
+                  <span className="text-xs text-amber-600">Searching...</span>
+                )}
+                {r.status === 'failed' && r.error_message && (
+                  <span className="text-xs text-red-600 truncate max-w-[160px]">
+                    {r.error_message}
+                  </span>
+                )}
+                {r.status === 'success' && r.best_price != null && (
+                  <span className="text-xs font-semibold text-green-700">
+                    {formatPrice(r.best_price)}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
         <DialogFooter>
           {isRunning ? (
-            <Button
-              variant="destructive"
-              onClick={onCancel}
-              disabled={isLoading}
-            >
+            <Button variant="destructive" onClick={onCancel} disabled={isLoading}>
               Cancel Job
             </Button>
           ) : (
@@ -139,8 +146,8 @@ export function ProgressTracker({
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Close
               </Button>
-              {(isComplete || progress.completed > 0) && (
-                <Button onClick={onViewResults}>View Results</Button>
+              {(isComplete || counts.completed > 0) && (
+                <Button onClick={onViewResults}>View Report →</Button>
               )}
             </>
           )}

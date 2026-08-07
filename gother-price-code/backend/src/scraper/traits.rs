@@ -2,6 +2,7 @@
 //!
 //! Common types and traits for scrapers.
 
+use crate::models::scrape_job::{Device, LoginState};
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,9 @@ pub struct ScrapeParams {
     pub checkout_date: NaiveDate,
     pub rooms: i32,
     pub adults: i32,
+    pub los_nights: i32,
+    pub device: Device,
+    pub login_state: LoginState,
 }
 
 /// Result from a price scrape
@@ -29,6 +33,9 @@ pub struct ScrapeResult {
     pub meal_plan: Option<String>,
     pub cancellation: Option<String>,
     pub source_url: Option<String>,
+    /// WHO ID, only ever populated by the Gother scraper (REQ-001 F-025).
+    #[serde(default)]
+    pub who_id: Option<String>,
 }
 
 /// Trait for price scrapers

@@ -24,6 +24,27 @@ impl CacheKeys {
         )
     }
 
+    /// Key for cached hotel price results, including the dimensions added
+    /// in REQ-001-v1.2 (method/device/login_state/los_nights) so different
+    /// configurations don't collide in the cache.
+    #[allow(clippy::too_many_arguments)]
+    pub fn hotel_price_v2(
+        hotel_id: Uuid,
+        checkin: NaiveDate,
+        checkout: NaiveDate,
+        rooms: i32,
+        adults: i32,
+        method: &str,
+        device: &str,
+        login_state: &str,
+        los_nights: i32,
+    ) -> String {
+        format!(
+            "price:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+            hotel_id, checkin, checkout, rooms, adults, method, device, login_state, los_nights
+        )
+    }
+
     /// Key for rate limiting SerpAPI calls
     /// Format: ratelimit:serpapi:{minute}
     pub fn serpapi_rate_limit(minute: i64) -> String {

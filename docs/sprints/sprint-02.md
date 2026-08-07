@@ -1,25 +1,28 @@
 ---
-title: Sprint 02 — Frontend + Integration
+title: Sprint 02 — Core Backend (Scraping + History)
 type: sprint
-status: Planning
-start: 2026-05-05
-end: 2026-05-11
-tags: [sprint, competition, frontend]
-related: ["[[REQ-001-v1.1]]", "[[REQ-003-v1.0]]", "[[wireframes-v1]]"]
+status: Active — REQ-001 tasks (1–10) done 2026-08-04; REQ-002 tasks (11–13) not started
+start: 2026-08-02
+end: 2026-08-08
+tags: [sprint, competition, backend]
+related: ["[[REQ-001-v1.3]]", "[[REQ-002-v1.0]]", "[[REQ-005-v1.0]]"]
 ---
 
-# Sprint 02 — Frontend + Integration
-_May 5 – May 11 (7 days)_
+# Sprint 02 — Core Backend (Scraping + History)
+_Aug 2 – Aug 8 (7 days)_
 
 ## Sprint Goal
-Wire all Sprint 01 backend changes into the UI; implement the competition demo screens (report expand/collapse, ⚠️ badge, evidence panel); validate the full scrape → report → export flow end-to-end.
+Implement everything REQ-001-v1.3 and REQ-002 need in the backend: Excel import fix, ChatGPT scraper (Method 1), evidence + price_diff_percent in API responses, provider-specific scraping per the Sprint 01 ADR, and dual-write to `hotel_price_history`.
+
+## Context
+Depends on Sprint 01 being signed off: ADR-003/004/005/006 decided, migrations 007–012 applied, REQ-001-v1.3 published. Do not start Task 7 or 11 below until ADR-005 (provider-specific scraping) is resolved — the scope of both depends directly on that decision.
 
 ---
 
 ## Carried over from Sprint 01
 | Task | Reason |
 |------|--------|
-| Migration 013 (materialized views) | Medium priority — carry if not done in Sprint 01 |
+| Migration 013 (materialized views) | Medium priority — moved to Sprint 03, pairs naturally with analytics dashboard work |
 
 ---
 
@@ -27,49 +30,42 @@ Wire all Sprint 01 backend changes into the UI; implement the competition demo s
 
 | # | Task | REQ | File(s) | Priority | Status |
 |---|------|-----|---------|----------|--------|
-| 1 | **Report table: expand/collapse rows** — click row to expand; show all room types per source for that hotel | REQ-001 F-011 | `frontend/src/pages/ReportView.tsx` | High | Todo |
-| 2 | **Evidence panel** — inside expanded row: table of source / room_type / price / URL / scraped_at per price entry | REQ-001 F-011 | `frontend/src/components/EvidencePanel.tsx` (new) | High | Todo |
-| 3 | **⚠️ badge** — show warning icon on price cell when room_type OR meal_plan OR cancellation_policy differs from Gother's entry; tooltip per mismatch type | REQ-001 F-011 | `frontend/src/components/PriceBadge.tsx` (new) | High | Todo |
-| 4 | **price_diff_percent display** — show Gap THB and Gap % as separate columns in report table; color-code green (cheapest) / red (losing) | REQ-001 F-011 | `frontend/src/pages/ReportView.tsx` | High | Todo |
-| 5 | **Scraping method selector in New Job modal** — radio buttons: SerpAPI / ChatGPT / Both; wire to `method` field in `CreateScrapeJobRequest` | REQ-001 F-004 | `frontend/src/components/NewJobModal.tsx` | High | Todo |
-| 6 | **Excel export: add evidence columns** — update `ExcelWriter` to include source_url, scraped_at, price_diff_percent, gap_thb, gap_pct per row | REQ-001 F-012 | `backend/src/excel/writer.rs` | High | Todo |
-| 7 | **Excel import: update UI** — update import modal to show all columns in preview (checkin_date, checkout_date, rooms, adults, currency) | REQ-001 F-002 | `frontend/src/components/ImportModal.tsx` | Medium | Todo |
-| 8 | **End-to-end demo flow test** — full flow: create group → import Excel → start job (Both methods) → watch progress → view report → export Excel | All | Manual | High | Todo |
-| 9 | **Docker Compose full-stack test** — `docker-compose up`, run migrations, run demo flow from fresh state | All | `docker-compose.yml` | High | Todo |
-| 10 | **Basic analytics KPI cards** (if time) — market overview: total hotels, Gother win rate %, avg price gap — read from `mv_hotel_market_position` | REQ-003 F-001 | `frontend/src/pages/AnalyticsDashboard.tsx` (new) | Low | Todo |
-
----
-
-## Key Screens to Match (wireframes-v1)
-- **Screen 5: Price Comparison Report** — this is the KEY SCREEN judges will see
-  - One row per hotel, cheapest per source column
-  - ▶ expand to show all room types + evidence
-  - ⚠️ badge on mismatched room type / meal plan / cancellation
-  - Gap THB and Gap % columns
-  - Green = cheapest / Red = losing
-- **Screen 3: New Job Modal** — method selector (SerpAPI / ChatGPT / Both)
-- **Screen 4: Job Progress** — already built; verify it still works after backend changes
+| 1 | **Fix Excel import** — add checkin_date, checkout_date, rooms, adults, currency columns; implement JobDefaults fallback; support the HID/SLUG format per ADR-003 | REQ-001 F-002 | `src/excel/reader.rs` | High | Done |
+| 2 | **Add `method` to scrape_job model + API** — update `ScrapeJob` struct, `CreateScrapeJobRequest`, DB insert, and `ScrapeJobMessage` to carry `method` field | REQ-001 F-004 | `src/models/`, `src/api/`, `src/queue/` | High | Done |
+| 3 | **Add `price_diff_percent` to response** — compute `((gother_price - best_price) / best_price) * 100` in results handler; add to `HotelPriceComparison` struct | REQ-001 F-011 | `src/api/responses.rs`, `src/api/handlers/` | High | Done |
+| 4 | **Add evidence to API response** — expose `source_url` + `scraped_at` inside each `PriceEntry` in the results response | REQ-001 F-011 | `src/api/responses.rs`, `src/api/handlers/` | High | Done |
+| 5 | **ChatGPT scraper (Method 1)** — implement `ChatGptScraper` using OpenAI API; prompt requests strict `ChatGptHotelPriceJson` schema; merge results with SerpAPI results | REQ-001 F-020 | `src/scraper/chatgpt.rs` (new file) | High | Done |
+| 6 | **WHO ID on Gother rates** — thread WHO ID through `GotherScraper` result and into the price entry/response | REQ-001 F-025 | `src/scraper/gother.rs`, `src/models/` | High | Done |
+| 7 | **Provider-specific scraping (F-022)** — implement per ADR-005's decision: either named-provider extraction from SerpAPI results, or dedicated Agoda/Trip/Wink scrapers | REQ-001 F-022 | `src/scraper/` | High | Done |
+| 8 | **Direct-contract rate handling (Wink/HyperGuest)** — include and flag direct-contract rates as comparable in the results set | REQ-001 F-026 | `src/scraper/`, `src/api/responses.rs` | High | Done |
+| 9 | **Blank-not-zero rendering** — ensure missing rate/provider combos serialize as `null`/absent, not `0` | REQ-001 F-027 | `src/api/responses.rs` | Medium | Done |
+| 10 | **Device + login-state dimensions** — add `device` (Desktop/Mobile Web) and `login_state` (Public/Member) to scrape job config and carry through to results | REQ-001 F-023/F-024 | `src/models/`, `src/scraper/` | Medium | Done |
+| 11 | **Dual-write to `hotel_price_history`** — after each hotel scrape succeeds, insert rows into `hotel_price_history` (lookup/create `currency_exchange_rates` entry first), mapped per ADR-004's output schema decision | REQ-002 F-001 | `src/worker/` | High | Todo |
+| 12 | **Scheduled scrape config CRUD + cron worker** — API for `scheduled_scrape_configs`, plus the scheduler implementation chosen in ADR-006, targeting weekly cadence | REQ-002 F-003/F-005, REQ-001 F-028 | `src/api/`, `src/worker/scheduler.rs` (new) | High | Todo |
+| 13 | **Price history query API** — endpoints to read back `hotel_price_history` filtered by hotel/source/date range, for Sprint 03's analytics dashboard to consume | REQ-002 F-007/F-008 | `src/api/handlers/history.rs` (new) | High | Todo |
 
 ---
 
 ## Definition of Done (per task)
-- Feature visible and working in browser at `localhost:3000`
-- Golden path tested manually: no console errors, correct data displayed
-- TypeScript strict mode: `npm run build` passes with no type errors
+- Code compiles (`cargo build` passes)
+- `cargo test` passes (or new test added for new behaviour)
+- Manual smoke test: run Docker Compose, hit the endpoint, verify expected output
 
 ---
 
 ## Blockers / Notes
-- Backend Sprint 01 must be complete before frontend work begins in earnest
-- `EvidencePanel` and `PriceBadge` should be new components; avoid bloating `ReportView`
-- If ChatGPT scraper is not stable, demo with `method=serpapi` — don't let it block the UI work
+- **Gother API endpoint + auth** — not yet supplied. Use existing `GotherScraper` as-is. Do not block on this.
+- **SerpAPI rate limits** — not confirmed. Keep `WORKER_CONCURRENCY=3` as safe default.
+- **OpenAI API key** — needed for Task 5. Set `OPENAI_API_KEY` in `.env`; `ChatGptScraper` falls back to `MockScraper` if missing (same pattern as existing API key guard).
+- Task 7 (provider-specific scraping) is the highest-risk item in this sprint — if ADR-005 concluded dedicated per-OTA scrapers are required, this task alone could consume most of the sprint. Reassess scope on day 1 of this sprint against the ADR-005 outcome and re-cut the remaining tasks if needed.
+- 2200-hotel / weekly-cadence full coverage (F-021, F-028) is a production target, not a demo requirement — a working pipeline proven on a smaller seed set is sufficient for Sprint 02; full-scale coverage is validated in Sprint 04.
 
 ---
 
 ## Carries to Sprint 03
-- Final demo data preparation
-- Submission documentation
-- Any unfinished low-priority items
+- Frontend: evidence expand panel, ⚠️ badge, price_diff_percent display, method selector
+- Excel export: add evidence + price_diff_percent columns
+- Analytics dashboard (REQ-003) + materialized views (REQ-005 Migration 013)
 
 ## Retrospective
 _Fill at end of sprint._

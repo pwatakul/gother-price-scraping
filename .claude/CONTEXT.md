@@ -1,7 +1,7 @@
 ---
 title: Project Context
 type: context
-updated: 2026-04-27
+updated: 2026-08-08
 tags: [context, project-status]
 ---
 
@@ -22,18 +22,21 @@ Phase 3 (future)   → Flight price comparison
 All phases share the same job queue, price history store, and analytics dashboard.
 
 ## Current Status
-- Version: v0.1
-- Active Sprint: [[sprint-01]]
+- Version: v0.3 (REQ-001 core, REQ-002 price history/scheduling, REQ-003 analytics dashboard, REQ-005 data platform incl. partition automation, REQ-007 hotel directory — all implemented)
+- Active Sprint: [[sprint-03]] (frontend/analytics work substantially complete ahead of schedule — see note below); [[sprint-04]] (demo polish) up next
 - Branch: main
-- Phase: Requirements & Design (CEO brief fully received — gaps identified below)
-- **Submission Deadline: May 15, 2026** (19 days from now)
+- Phase: Implementation — functionality largely complete; Part B (Cloud Run deployment) suspended indefinitely by user directive to focus on functionality first
+- **Submission Deadline: Aug 17, 2026**
 - Prize target: ฿120,000 (1st place)
 
-> [!WARNING]
-> **No implementation until design is signed off.** CEO brief is complete. Critical gaps identified vs. current implementation — see "Gaps vs Competition Brief" section below. Requirements update and system design needed before coding resumes.
-
 > [!NOTE]
-> **2026-07-27**: Raw brief data (`docs/raw/Req price scrapping - 17 July 26.xlsx`) parsed into [[REQ-001-v1.2]]. Managed data assets: `docs/data/hotel-list-2200.csv` (the 2200-hotel list) and `docs/data/example-raw-data-schema.md` + `docs/data/example-raw-data-sample.csv` (target scraper output schema). Three open questions from this brief (hotel-list import format, output schema gap, provider-specific scraping) still need design decisions — see REQ-001-v1.2 Open Questions.
+> **2026-08-08**: Google Cloud Run deployment (Part B) suspended indefinitely per user directive — focus is on functionality. In this pass: REQ-002 (price history + scheduled scraping) and REQ-003 (analytics dashboard) fully implemented; scraper dispatch refactored into a pluggable adapter/registry pattern (`ScraperFactory` trait + `default_registry()` in `backend/src/scraper/registry.rs`); new global "All Hotels" page (REQ-007, `backend/src/api/handlers/hotel_directory.rs` + `frontend/src/pages/HotelsList.tsx`) with country/city filtering, search, numbered pagination (URL-synced), and export; sidebar reorganized (collapsible "Hotels" section: New Price Search / All Hotels / collapsible Analytics submenu; Import/Export tab removed); data export added for both per-hotel and per-group (across all jobs) price history; hotel detail page now shows the full paginated, filterable raw price-history table, not just the aggregated trend chart. Finally, [[REQ-005-v1.2]] closed the last flagged data-platform gap: `hotel_price_history` partition auto-creation is now automated via a daily background loop (`backend/src/worker/partition_manager.rs`), application-level and idempotent — no `pg_partman` dependency added, consistent with the standing decision against that extension. Verified live via docker: partitions ensured on startup, idempotent on restart (`pg_inherits` unchanged, no errors).
+>
+> **2026-08-04**: REQ-001's core scraping/API/Excel/evidence scope (F-002, F-004, F-011, F-020, F-021–F-027) implemented — see [[REQ-001-v1.3]], [[ADR-001-scraper-choice]], [[ADR-003-hotel-list-import-format]], [[ADR-005-provider-specific-scraping]]. Migrations 007–010 added. Wink still has no real data source (stubbed blank), device/login-state dimensions are recorded but not verified to change actual scrape behavior, Gother WHO ID field not confirmed to exist upstream — see REQ-001-v1.3's Open Risks section (still open as of 2026-08-08).
+>
+> **2026-07-30**: Deadline moved to Aug 17, 2026 (from May 15, 2026). Descoped, not schedulable by Aug 17: [[REQ-004-v1.0]] (multi-product/experiences) — its own doc gates on hotels/price history being stable, only true after Sprint 02. [[REQ-006-v1.0]] (forecasting) — requires 6 months of accumulated `hotel_price_history`, which cannot exist by Aug 17 regardless of engineering effort. Both remain descoped as of 2026-08-08.
+>
+> **2026-07-27** (prior note): Raw brief data (`docs/raw/Req price scrapping - 17 July 26.xlsx`) parsed into [[REQ-001-v1.2]]. Managed data assets: `docs/data/hotel-list-2200.csv` (the 2200-hotel list) and `docs/data/example-raw-data-schema.md` + `docs/data/example-raw-data-sample.csv` (target scraper output schema).
 
 ## Gaps vs Competition Brief (must fix before demo)
 
@@ -60,41 +63,43 @@ All phases share the same job queue, price history store, and analytics dashboar
 
 ## Tech Stack
 - Backend: Rust + Axum, SQLx (PostgreSQL), Lapin (RabbitMQ), Redis
-- Frontend: TypeScript + React 18 + Vite, TanStack Query, Tailwind CSS, shadcn/ui (Radix UI)
-- Database: PostgreSQL (v1.0: 6 migrations; v1.1: adds price_history + scheduled_scrape_configs)
-- External APIs: SerpAPI (Google Hotels), Gother internal API, OpenAI ChatGPT (Method 1 — bonus)
-- Deployment: Docker Compose (postgres + redis + rabbitmq + backend + frontend via nginx)
+- Frontend: TypeScript + React 18 + Vite, TanStack Query, Tailwind CSS, shadcn/ui (Radix UI), recharts, react-router-dom
+- Database: PostgreSQL (16 migrations: core schema, price_history + partitioning, currency_exchange_rates, scheduled_scrape_configs, materialized views)
+- External APIs: SerpAPI (Google Hotels), Gother internal API, OpenAI ChatGPT (Method 1 — bonus), optional Gemini normalization
+- Scraper dispatch: pluggable adapter/registry pattern — `ScraperFactory` trait + `default_registry()` (`backend/src/scraper/registry.rs`), stored in `AppState.scraper_registry`
+- Deployment: Docker Compose (postgres + redis + rabbitmq + backend + frontend via nginx) — Cloud Run deployment (Part B) suspended indefinitely, functionality-first
 
-## What's already implemented (v0.1 — hotel scraping core)
-- [x] PostgreSQL schema v1.0 — all 6 migrations
-- [x] Rust models, DB repositories, Axum REST API (hotel groups, hotels, scrape jobs, templates)
+## What's already implemented
+- [x] PostgreSQL schema — all 16 migrations (core, price history + monthly partitioning, currency rates, scheduled scrape configs, materialized views)
+- [x] Rust models, DB repositories, Axum REST API (hotel groups, hotels, scrape jobs, templates, price history, scheduled scrape configs, analytics, hotel directory)
 - [x] RabbitMQ publisher + worker processor (parallel hotel scraping)
-- [x] SerpAPI + Gother API scrapers; mock fallback for dev
+- [x] SerpAPI + Gother API + ChatGPT scrapers; pluggable adapter/registry; mock fallback for dev
 - [x] Redis price caching
-- [x] Price normalizer (room type, meal plan, currency → THB)
-- [x] Excel import (hotel lists) + export (price comparison reports)
-- [x] Optional Gemini AI normalization
-- [x] React frontend — Dashboard, HotelGroupDetail, ReportView pages + all components
+- [x] Price normalizer (room type, meal plan, currency → THB) + optional Gemini AI normalization
+- [x] Excel import (hotel lists, ADR-003 format) + export (price comparison reports, per-hotel history, per-group history)
+- [x] Dual-write: scrape worker writes to `hotel_price_history` — [[REQ-002-v1.1]] F-001
+- [x] `scheduled_scrape_configs` + cron worker (`worker/scheduler.rs`) — [[REQ-002-v1.1]] F-003 / F-005
+- [x] Price history query + export API — [[REQ-002-v1.1]] F-007 / F-008, F-006
+- [x] `hotel_price_history` partition auto-creation (daily idempotent loop, no `pg_partman`) — [[REQ-005-v1.2]] F-002
+- [x] Materialized views for analytics (5 views: market position, daily avg price, win rate, booking window, parity violations) — [[REQ-005-v1.2]] F-003 / F-004, refreshed after every scrape job
+- [x] Market analytics dashboard — overview card, trend chart, position table, heatmap, date-range filter — [[REQ-003-v1.0]], `frontend/src/pages/AnalyticsDashboard.tsx`
+- [x] Global "All Hotels" directory page — country/city filters, search, URL-synced pagination, export — [[REQ-007-hotel-directory]], `frontend/src/pages/HotelsList.tsx`
+- [x] Hotel detail page — trend chart + full paginated/filterable raw price-history table — `frontend/src/pages/HotelDetail.tsx`
+- [x] React frontend — Dashboard, HotelGroupDetail, ReportView, HotelsList, HotelDetail, AnalyticsDashboard pages; reorganized sidebar (collapsible Hotels section: New Price Search / All Hotels / collapsible Analytics submenu)
 - [x] Docker Compose full stack
-
-## What's pending (requires CEO brief + design sign-off first)
-- [ ] `price_history` table (partitioned, time-series) — [[REQ-001-v1.1]] F-015
-- [ ] Dual-write: scrape worker writes to price_history — [[REQ-002-v1.0]] F-001
-- [ ] `scheduled_scrape_configs` + cron worker — [[REQ-002-v1.0]] F-003 / F-005
-- [ ] Price history query API — [[REQ-002-v1.0]] F-007 / F-008
-- [ ] Market analytics dashboard (trend charts, position table, heatmap) — [[REQ-003-v1.0]]
-- [ ] Materialized views for analytics — [[REQ-005-v1.0]] F-003 / F-004
-- [ ] Multi-product support (experiences) — [[REQ-004-v1.0]] — Phase 2
+- [ ] Multi-product support (experiences) — [[REQ-004-v1.0]] — Phase 2, descoped
+- [ ] Cloud Run deployment (Part B) — suspended indefinitely per user directive
 
 ## Requirements Index
 | Doc | Scope | Status |
 |-----|-------|--------|
-| [[REQ-001-v1.2]] | Hotel price scraping — core module | Active |
-| [[REQ-002-v1.0]] | Price history & automated scraping | Draft |
-| [[REQ-003-v1.0]] | Market analytics dashboard | Draft |
-| [[REQ-004-v1.0]] | Multi-product support (experiences, flights) | Planned |
-| [[REQ-005-v1.0]] | Data platform & scalability | Draft |
-| [[REQ-006-v1.0]] | Price forecasting & predictive analytics (Phase 4) | Draft — Planned |
+| [[REQ-001-v1.3]] | Hotel price scraping — core module | Active — core scraping/API/Excel/evidence implemented 2026-08-04 |
+| [[REQ-002-v1.1]] | Price history & automated scraping | Active — implemented 2026-08-08 |
+| [[REQ-003-v1.0]] | Market analytics dashboard | Active — implemented 2026-08-08 |
+| [[REQ-004-v1.0]] | Multi-product support (experiences, flights) | Descoped — blocked on REQ-001/002 stability per its own doc |
+| [[REQ-005-v1.2]] | Data platform & scalability | Active — implemented 2026-08-08, incl. partition automation (F-002) |
+| [[REQ-006-v1.0]] | Price forecasting & predictive analytics (Phase 4) | Descoped — requires 6mo of history data that can't exist by Aug 17 |
+| [[REQ-007-hotel-directory]] | Global hotel directory / "All Hotels" page | Active — implemented 2026-08-08 |
 
 ## Design Index
 | Doc | Scope | Status |
@@ -135,8 +140,13 @@ All phases share the same job queue, price history store, and analytics dashboar
 - Data Model: [[data-model-v1.1]]
 - API Design: [[api-design]]
 - Decisions: docs/decisions/
-- Current Sprint: [[sprint-01]]
+- Current Sprint: [[sprint-04]] (demo polish & submission — in progress, started ahead of schedule); [[sprint-03]] substantially complete
 - Changelog: [[CHANGELOG]]
+
+> [!NOTE]
+> **2026-08-08 (Sprint 04 started early)**: Docker Compose clean-start, env file, README, error-handling review, seed demo data (50-hotel group via API), and a performance check (50-hotel job completed in 9s at `WORKER_CONCURRENCY=3`, all analytics/directory endpoints <50ms) are all done — see [[sprint-04]] for details.
+>
+> **2026-08-08 (later)**: Dry-run surfaced two backend features with no frontend UI — master-hotel-list import (`/import-master`) and scheduled-scrape-config management. Both now have minimal UI: a format toggle on the group import dialog, and a "Scheduled Scrapes" card on the group detail page (`frontend/src/api/scheduledScrapeConfigs.ts` + `HotelGroupDetail.tsx`). `tsc`/`vite build` clean; both round-tripped against the live API. No browser tool is available in this environment, so the visual walkthrough (report table, badges, evidence panel, analytics charts rendering, no console errors) still needs a human pass before Sprint 04 Task 9 (final submission package) can start.
 
 ## How to run the project
 ```bash

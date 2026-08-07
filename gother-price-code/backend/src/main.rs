@@ -62,12 +62,7 @@ async fn main() -> Result<()> {
     info!("✅ RabbitMQ connected");
 
     // Create application state
-    let app_state = api::AppState {
-        db: db_pool.clone(),
-        redis: redis_client.clone(),
-        rabbitmq: rabbitmq_channel.clone(),
-        config: config.clone(),
-    };
+    let app_state = api::AppState::new(db_pool.clone(), redis_client.clone(), rabbitmq_channel.clone(), config.clone());
 
     // Spawn worker in background
     let worker_state = app_state.clone();
@@ -76,6 +71,21 @@ async fn main() -> Result<()> {
         if let Err(e) = worker::run(worker_state).await {
             tracing::error!("Worker error: {:?}", e);
         }
+    });
+
+    // Spawn scheduled-scrape scheduler in background (REQ-002 F-005)
+    let scheduler_state = std::sync::Arc::new(app_state.clone());
+    tokio::spawn(async move {
+        info!("⏰ Starting scheduled-scrape scheduler...");
+        worker::scheduler::run(scheduler_state).await;
+    });
+
+    // Spawn partition manager in background (REQ-005 F-002) — keeps
+    // hotel_price_history's rolling partition window topped up
+    let partition_state = std::sync::Arc::new(app_state.clone());
+    tokio::spawn(async move {
+        info!("🗂 Starting hotel_price_history partition manager...");
+        worker::partition_manager::run(partition_state).await;
     });
 
     // Build router

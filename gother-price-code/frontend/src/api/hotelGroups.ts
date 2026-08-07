@@ -66,7 +66,7 @@ export async function deleteHotelGroup(id: string): Promise<void> {
   await apiClient.delete(`/hotel-groups/${id}`);
 }
 
-// Import hotels from Excel
+// Import hotels from Excel (plain hotel_name/city/country format)
 export async function importHotels(
   groupId: string,
   file: File
@@ -75,6 +75,23 @@ export async function importHotels(
   formData.append('file', file);
 
   const response = await apiClient.post(`/hotel-groups/${groupId}/import`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+}
+
+// Import hotels from the master hotel-list format (HID, Hotel-Name,
+// UPDATE URL, SLUG, Supplier-or-Direct, Country, SEARCH — see ADR-003)
+export async function importMasterHotels(
+  groupId: string,
+  file: File
+): Promise<{ success: boolean; imported_count: number }> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await apiClient.post(`/hotel-groups/${groupId}/import-master`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },

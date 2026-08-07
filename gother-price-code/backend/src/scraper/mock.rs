@@ -36,11 +36,12 @@ impl Scraper for MockScraper {
         let mut rng = rand::thread_rng();
         let mut results = Vec::new();
 
-        // Generate mock prices for different sources
+        // Generate mock prices for the named providers only (agoda/trip/
+        // gother). Wink is deliberately never mocked here — it has no real
+        // scraper, and REQ-001 F-027 requires it render blank, not fake data.
         let sources = vec![
             ("agoda", "https://www.agoda.com"),
-            ("booking", "https://www.booking.com"),
-            ("trip.com", "https://www.trip.com"),
+            ("trip", "https://www.trip.com"),
             ("gother", "https://www.gother.com"),
         ];
 
@@ -88,6 +89,7 @@ impl Scraper for MockScraper {
                     url,
                     params.hotel_name.replace(' ', "-").to_lowercase()
                 )),
+                who_id: None,
             });
         }
 
@@ -98,6 +100,7 @@ impl Scraper for MockScraper {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::scrape_job::{Device, LoginState};
     use chrono::NaiveDate;
 
     #[tokio::test]
@@ -111,12 +114,17 @@ mod tests {
             checkout_date: NaiveDate::from_ymd_opt(2026, 5, 2).unwrap(),
             rooms: 1,
             adults: 2,
+            los_nights: 1,
+            device: Device::Desktop,
+            login_state: LoginState::Public,
         };
 
         let results = scraper.scrape(&params).await.unwrap();
 
         assert!(!results.is_empty());
         assert!(results.iter().any(|r| r.source == "agoda"));
+        assert!(results.iter().any(|r| r.source == "trip"));
         assert!(results.iter().any(|r| r.source == "gother"));
+        assert!(!results.iter().any(|r| r.source == "wink"));
     }
 }

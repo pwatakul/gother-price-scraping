@@ -1,24 +1,21 @@
+import { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import {
-  ArrowLeft,
-  Download,
-  Loader2,
-  Calendar,
-  Users,
-  BedDouble,
-  CheckCircle2,
-  XCircle,
-  TrendingDown,
-} from 'lucide-react';
+import { ArrowLeft, Download, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { Card, CardContent } from '@/components/ui/Card';
+import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { Input } from '@/components/ui/Input';
 import { PriceComparisonTable } from '@/components/PriceComparisonTable';
 import { getScrapeResults, exportResults, downloadBlob } from '@/api/scrapeJobs';
-import { formatDate, formatPrice } from '@/utils/format';
+import { formatDate, formatPrice, getStatusColor } from '@/utils/format';
+
+type ResultFilter = 'all' | 'winning' | 'losing' | 'not_found';
 
 export function ReportView() {
   const { id } = useParams<{ id: string }>();
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<ResultFilter>('all');
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['scrapeResults', id],
@@ -35,6 +32,26 @@ export function ReportView() {
     }
   };
 
+  const filteredResults = useMemo(() => {
+    if (!data) return [];
+    let rows = data.results;
+
+    const q = search.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter((r) => r.hotel.name.toLowerCase().includes(q));
+    }
+
+    if (filter === 'winning') {
+      rows = rows.filter((r) => r.best_source === 'gother');
+    } else if (filter === 'losing') {
+      rows = rows.filter((r) => r.best_source !== null && r.best_source !== 'gother');
+    } else if (filter === 'not_found') {
+      rows = rows.filter((r) => r.status === 'failed' || r.prices.length === 0);
+    }
+
+    return rows;
+  }, [data, search, filter]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -45,7 +62,7 @@ export function ReportView() {
 
   if (error || !data) {
     return (
-      <div className="container mx-auto py-8 px-4">
+      <div className="max-w-[1400px] mx-auto py-6 px-7">
         <div className="text-center py-12">
           <h2 className="text-xl font-semibold mb-2">Report not found</h2>
           <Button asChild>
@@ -56,38 +73,38 @@ export function ReportView() {
     );
   }
 
-  const { job, summary, results } = data;
+  const { job, summary } = data;
 
   return (
-    <div className="container mx-auto py-8 px-4">
+    <div className="max-w-[1400px] mx-auto py-6 px-7">
+      {/* Back link */}
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 mb-3.5"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Back to Dashboard
+      </Link>
+
       {/* Header */}
-      <div className="mb-6">
-        <Button variant="ghost" asChild className="mb-4">
-          <Link to="/">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Dashboard
-          </Link>
-        </Button>
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Price Comparison Report</h1>
-            <div className="flex items-center gap-4 mt-2 text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <Calendar className="h-4 w-4" />
-                <span>
-                  {formatDate(job.checkin_date)} - {formatDate(job.checkout_date)}
-                </span>
-              </div>
-              <div className="flex items-center gap-1">
-                <BedDouble className="h-4 w-4" />
-                <span>{job.rooms} room{job.rooms !== 1 ? 's' : ''}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Users className="h-4 w-4" />
-                <span>{job.adults} adult{job.adults !== 1 ? 's' : ''}</span>
-              </div>
-            </div>
-          </div>
+      <div className="flex items-start justify-between mb-5">
+        <div>
+          <h1 className="text-xl font-bold">📋 Price Comparison Report</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {formatDate(job.checkin_date)} – {formatDate(job.checkout_date)} · {job.rooms} rm /{' '}
+            {job.adults} ad · Method: {job.method} ·{' '}
+            <Badge className={getStatusColor(job.status)}>
+              {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+            </Badge>
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link to="/">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              New Search
+            </Link>
+          </Button>
           <Button onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />
             Export Excel
@@ -95,78 +112,61 @@ export function ReportView() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4 mb-6">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <BedDouble className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Hotels</p>
-                <p className="text-2xl font-bold">{summary.total_hotels}</p>
-              </div>
-            </div>
-          </CardContent>
+      {/* KPIs */}
+      <div className="grid grid-cols-4 gap-3.5 mb-5">
+        <Card className="p-[18px_20px]">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Hotels Scraped
+          </div>
+          <div className="text-[26px] font-bold mt-1.5">{summary.total_hotels}</div>
         </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Successful</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {summary.successful}
-                </p>
-              </div>
-            </div>
-          </CardContent>
+        <Card className="p-[18px_20px]">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Successful ✅
+          </div>
+          <div className="text-[26px] font-bold mt-1.5 text-green-600">{summary.successful}</div>
         </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-100 rounded-lg">
-                <XCircle className="h-5 w-5 text-red-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Failed</p>
-                <p className="text-2xl font-bold text-red-600">
-                  {summary.failed}
-                </p>
-              </div>
-            </div>
-          </CardContent>
+        <Card className="p-[18px_20px]">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Failed ❌
+          </div>
+          <div className="text-[26px] font-bold mt-1.5 text-red-600">{summary.failed}</div>
         </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <TrendingDown className="h-5 w-5 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Avg Best Price</p>
-                <p className="text-2xl font-bold">
-                  {summary.avg_best_price
-                    ? formatPrice(summary.avg_best_price)
-                    : 'N/A'}
-                </p>
-              </div>
-            </div>
-          </CardContent>
+        <Card className="p-[18px_20px]">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Avg Best Price
+          </div>
+          <div className="text-[26px] font-bold mt-1.5">
+            {summary.avg_best_price ? formatPrice(summary.avg_best_price) : 'N/A'}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5">across all hotels</div>
         </Card>
       </div>
 
-      {/* Price Comparison Table */}
-      <div className="mb-4">
-        <h2 className="text-xl font-semibold mb-4">Price Comparison</h2>
+      {/* Filter row */}
+      <div className="flex items-center gap-2.5 mb-4">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="🔍 Search hotels..."
+          className="w-[280px]"
+        />
+        <select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value as ResultFilter)}
+          className="h-10 rounded-[7px] border border-input bg-background px-3 text-sm w-[180px]"
+        >
+          <option value="all">All hotels</option>
+          <option value="winning">Gother winning 🟢</option>
+          <option value="losing">Gother losing 🔴</option>
+          <option value="not_found">Not found ❌</option>
+        </select>
+        <div className="ml-auto text-xs text-slate-400">
+          🟢 = Gother cheapest &nbsp; 🔴 = Gother losing &nbsp; ⚠️ = Not apples-to-apples
+        </div>
       </div>
-      <PriceComparisonTable results={results} />
+
+      <PriceComparisonTable results={filteredResults} />
     </div>
   );
 }

@@ -56,6 +56,15 @@ export default {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
         },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          hover: "hsl(var(--sidebar-hover))",
+        },
+        topbar: "hsl(var(--topbar))",
+      },
+      fontFamily: {
+        sans: ["InterVariable", "Inter", "system-ui", "-apple-system", "sans-serif"],
       },
       borderRadius: {
         lg: "var(--radius)",

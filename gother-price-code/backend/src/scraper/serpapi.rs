@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
 
+use super::providers::{AGODA, TRIP};
 use super::{ScrapeParams, ScrapeResult, Scraper};
 use crate::normalizer;
 
@@ -141,8 +142,15 @@ impl Scraper for SerpApiScraper {
             // Normalize room type
             let normalized_room = normalizer::normalize_room_type(&room_type);
 
+            // Only Agoda/Trip are named providers per REQ-001-v1.2 F-022;
+            // drop booking/expedia/hotels.com/official/anything else so
+            // comparisons stay apples-to-apples (never fabricate a row).
+            let Some(normalized_source) = normalize_source_name(&source) else {
+                continue;
+            };
+
             results.push(ScrapeResult {
-                source: normalize_source_name(&source),
+                source: normalized_source,
                 room_type: normalized_room,
                 price_thb: price_value,
                 original_price: Some(price_value),
@@ -150,10 +158,14 @@ impl Scraper for SerpApiScraper {
                 meal_plan: None, // SerpAPI doesn't always provide this
                 cancellation: None,
                 source_url: property.link.clone(),
+                who_id: None,
             });
         }
 
-        if results.is_empty() {
+        // An empty result after filtering is a legitimate "no matching
+        // named-provider rate" outcome (REQ-001 F-027 blank case), not a
+        // scrape failure — only bail if SerpAPI returned nothing at all.
+        if results.is_empty() && property.prices.is_empty() {
             anyhow::bail!("No prices found");
         }
 
@@ -161,23 +173,37 @@ impl Scraper for SerpApiScraper {
     }
 }
 
-/// Normalize OTA source names
-fn normalize_source_name(source: &str) -> String {
+/// Normalize OTA source names onto the brief's named-provider set
+/// (Gother/Agoda/Trip/Wink). Returns None for anything else so the caller
+/// can drop it.
+fn normalize_source_name(source: &str) -> Option<String> {
     let lower = source.to_lowercase();
-    
+
     if lower.contains("agoda") {
-        "agoda".to_string()
-    } else if lower.contains("booking") {
-        "booking".to_string()
+        Some(AGODA.to_string())
     } else if lower.contains("trip.com") || lower.contains("ctrip") {
-        "trip.com".to_string()
-    } else if lower.contains("expedia") {
-        "expedia".to_string()
-    } else if lower.contains("hotels.com") {
-        "hotels.com".to_string()
-    } else if lower.contains("official") || lower.contains("direct") {
-        "official".to_string()
+        Some(TRIP.to_string())
     } else {
-        source.to_lowercase()
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keeps_named_providers_only() {
+        assert_eq!(normalize_source_name("Agoda.com"), Some(AGODA.to_string()));
+        assert_eq!(normalize_source_name("Trip.com"), Some(TRIP.to_string()));
+        assert_eq!(normalize_source_name("Ctrip"), Some(TRIP.to_string()));
+    }
+
+    #[test]
+    fn drops_non_named_providers() {
+        assert_eq!(normalize_source_name("Booking.com"), None);
+        assert_eq!(normalize_source_name("Expedia"), None);
+        assert_eq!(normalize_source_name("Hotels.com"), None);
+        assert_eq!(normalize_source_name("Official Site"), None);
     }
 }

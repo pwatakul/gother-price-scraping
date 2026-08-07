@@ -187,20 +187,24 @@ impl ExcelWriter {
             .set_background_color(Color::RGB(0xFFC7CE))
             .set_font_color(Color::RGB(0x9C0006));
 
-        // Headers
+        // Headers — one column per named provider (REQ-001-v1.2 F-022),
+        // plus evidence (F-011) and diff columns. Wink renders blank when
+        // absent (F-027), never a fabricated 0.
         let headers = [
             "Hotel Name",
             "City",
             "Country",
             "Status",
             "Gother (THB)",
+            "Gother WHO ID",
             "Agoda (THB)",
-            "Booking (THB)",
-            "Trip.com (THB)",
-            "Official (THB)",
+            "Trip (THB)",
+            "Wink (THB)",
             "Best Source",
             "Best Price (THB)",
-            "Diff vs Gother",
+            "Gap vs Gother (THB)",
+            "Gap vs Gother (%)",
+            "Evidence (Source URL / Scraped At)",
         ];
 
         for (col, header) in headers.iter().enumerate() {
@@ -208,6 +212,8 @@ impl ExcelWriter {
                 .write_string_with_format(0, col as u16, *header, &header_format)
                 .map_err(xlsx_err)?;
         }
+
+        use crate::scraper::providers::{AGODA, GOTHER, TRIP, WINK};
 
         // Data rows
         for (row_idx, hotel) in results.results.iter().enumerate() {
@@ -236,75 +242,34 @@ impl ExcelWriter {
                 continue;
             }
 
-            // Find prices by source
-            let gother_price = hotel
-                .prices
-                .iter()
-                .find(|p| p.source == "gother")
-                .map(|p| p.price_thb);
-            let agoda_price = hotel
-                .prices
-                .iter()
-                .find(|p| p.source == "agoda")
-                .map(|p| p.price_thb);
-            let booking_price = hotel
-                .prices
-                .iter()
-                .find(|p| p.source == "booking")
-                .map(|p| p.price_thb);
-            let trip_price = hotel
-                .prices
-                .iter()
-                .find(|p| p.source == "trip.com")
-                .map(|p| p.price_thb);
-            let official_price = hotel
-                .prices
-                .iter()
-                .find(|p| p.source == "official")
-                .map(|p| p.price_thb);
+            let find = |source: &str| hotel.prices.iter().find(|p| p.source == source);
 
-            // Write prices
-            if let Some(price) = gother_price {
-                worksheet.write_number(row, 4, price).map_err(xlsx_err)?;
-            }
-            if let Some(price) = agoda_price {
-                let is_best = hotel.best_source.as_deref() == Some("agoda");
-                if is_best {
-                    worksheet
-                        .write_number_with_format(row, 5, price, &best_price_format)
-                        .map_err(xlsx_err)?;
-                } else {
-                    worksheet.write_number(row, 5, price).map_err(xlsx_err)?;
+            let gother_entry = find(GOTHER);
+            let agoda_entry = find(AGODA);
+            let trip_entry = find(TRIP);
+            let wink_entry = find(WINK);
+
+            // Write prices (blank cell, never 0, when absent — F-027)
+            if let Some(p) = gother_entry {
+                worksheet.write_number(row, 4, p.price_thb).map_err(xlsx_err)?;
+                if let Some(who_id) = &p.who_id {
+                    worksheet.write_string(row, 5, who_id).map_err(xlsx_err)?;
                 }
             }
-            if let Some(price) = booking_price {
-                let is_best = hotel.best_source.as_deref() == Some("booking");
-                if is_best {
-                    worksheet
-                        .write_number_with_format(row, 6, price, &best_price_format)
-                        .map_err(xlsx_err)?;
-                } else {
-                    worksheet.write_number(row, 6, price).map_err(xlsx_err)?;
-                }
-            }
-            if let Some(price) = trip_price {
-                let is_best = hotel.best_source.as_deref() == Some("trip.com");
-                if is_best {
-                    worksheet
-                        .write_number_with_format(row, 7, price, &best_price_format)
-                        .map_err(xlsx_err)?;
-                } else {
-                    worksheet.write_number(row, 7, price).map_err(xlsx_err)?;
-                }
-            }
-            if let Some(price) = official_price {
-                let is_best = hotel.best_source.as_deref() == Some("official");
-                if is_best {
-                    worksheet
-                        .write_number_with_format(row, 8, price, &best_price_format)
-                        .map_err(xlsx_err)?;
-                } else {
-                    worksheet.write_number(row, 8, price).map_err(xlsx_err)?;
+            for (entry, col, source) in [
+                (agoda_entry, 6u16, AGODA),
+                (trip_entry, 7u16, TRIP),
+                (wink_entry, 8u16, WINK),
+            ] {
+                if let Some(p) = entry {
+                    let is_best = hotel.best_source.as_deref() == Some(source);
+                    if is_best {
+                        worksheet
+                            .write_number_with_format(row, col, p.price_thb, &best_price_format)
+                            .map_err(xlsx_err)?;
+                    } else {
+                        worksheet.write_number(row, col, p.price_thb).map_err(xlsx_err)?;
+                    }
                 }
             }
 
@@ -320,10 +285,27 @@ impl ExcelWriter {
             if let Some(diff) = hotel.price_difference {
                 worksheet.write_number(row, 11, diff).map_err(xlsx_err)?;
             }
+            if let Some(pct) = hotel.price_diff_percent {
+                worksheet.write_number(row, 12, pct).map_err(xlsx_err)?;
+            }
+
+            // Evidence: source_url + scraped_at for the best-price entry
+            if let Some(best_entry) = hotel
+                .prices
+                .iter()
+                .find(|p| Some(p.source.as_str()) == hotel.best_source.as_deref())
+            {
+                let evidence = format!(
+                    "{} @ {}",
+                    best_entry.source_url.clone().unwrap_or_default(),
+                    best_entry.scraped_at
+                );
+                worksheet.write_string(row, 13, &evidence).map_err(xlsx_err)?;
+            }
         }
 
         // Set column widths
-        let widths = [30, 15, 15, 10, 15, 15, 15, 15, 15, 12, 15, 15];
+        let widths = [30, 15, 15, 10, 15, 18, 15, 15, 15, 12, 15, 18, 15, 40];
         for (col, width) in widths.iter().enumerate() {
             worksheet
                 .set_column_width(col as u16, *width)

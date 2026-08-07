@@ -1,18 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  Download,
   Plus,
   Upload,
   Play,
   Loader2,
   History,
+  Clock,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
+import { Card } from '@/components/ui/Card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/Table';
 import {
   Dialog,
   DialogContent,
@@ -30,12 +41,19 @@ import {
   addHotelToGroup,
   removeHotelFromGroup,
   importHotels,
+  importMasterHotels,
   listGroupJobs,
 } from '@/api/hotelGroups';
-import { createScrapeJob, getScrapeJob, cancelScrapeJob } from '@/api/scrapeJobs';
+import { createScrapeJob, getScrapeResults, cancelScrapeJob, downloadBlob } from '@/api/scrapeJobs';
+import {
+  listScheduledScrapeConfigs,
+  createScheduledScrapeConfig,
+  deleteScheduledScrapeConfig,
+} from '@/api/scheduledScrapeConfigs';
+import apiClient from '@/api/client';
 import { Badge } from '@/components/ui/Badge';
 import { formatDate, formatRelativeTime, getStatusColor } from '@/utils/format';
-import type { ScrapeJob, ScrapeJobWithProgress } from '@/types';
+import type { ScrapeJob, ScrapeMethod } from '@/types';
 
 export function HotelGroupDetail() {
   const { id } = useParams<{ id: string }>();
@@ -44,15 +62,21 @@ export function HotelGroupDetail() {
 
   const [isAddHotelOpen, setIsAddHotelOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importFormat, setImportFormat] = useState<'plain' | 'master'>('plain');
   const [isScrapeFormOpen, setIsScrapeFormOpen] = useState(false);
   const [isProgressOpen, setIsProgressOpen] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [activeJob, setActiveJob] = useState<ScrapeJobWithProgress | null>(null);
 
   const [hotelName, setHotelName] = useState('');
   const [hotelCity, setHotelCity] = useState('');
   const [hotelCountry, setHotelCountry] = useState('Thailand');
   const [importFile, setImportFile] = useState<File | null>(null);
+
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [scheduleName, setScheduleName] = useState('');
+  const [scheduleCron, setScheduleCron] = useState('0 6 * * 1');
+  const [scheduleLookahead, setScheduleLookahead] = useState('7,30');
+  const [scheduleMethod, setScheduleMethod] = useState<ScrapeMethod>('serpapi');
 
   // Fetch hotel group details
   const { data, isLoading, error } = useQuery({
@@ -68,31 +92,25 @@ export function HotelGroupDetail() {
     enabled: !!id,
   });
 
-  // Poll active job
-  useEffect(() => {
-    if (!activeJobId || !isProgressOpen) return;
+  // Fetch scheduled scrape configs (REQ-002 F-003/F-004)
+  const { data: schedules } = useQuery({
+    queryKey: ['scheduledScrapeConfigs', id],
+    queryFn: () => listScheduledScrapeConfigs(id!),
+    enabled: !!id,
+  });
 
-    const pollJob = async () => {
-      try {
-        const job = await getScrapeJob(activeJobId);
-        setActiveJob(job);
-
-        if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
-          // Stop polling
-          return;
-        }
-      } catch (error) {
-        console.error('Failed to poll job:', error);
-      }
-    };
-
-    // Initial fetch
-    pollJob();
-
-    // Poll every 5 seconds
-    const interval = setInterval(pollJob, 5000);
-    return () => clearInterval(interval);
-  }, [activeJobId, isProgressOpen]);
+  // Poll the active job's full results (not just the aggregate progress
+  // endpoint) so the progress dialog can show a per-hotel status log.
+  const { data: activeResults } = useQuery({
+    queryKey: ['scrapeResults', activeJobId],
+    queryFn: () => getScrapeResults(activeJobId!),
+    enabled: !!activeJobId && isProgressOpen,
+    refetchInterval: (query) => {
+      const status = query.state.data?.job.status;
+      const isTerminal = status === 'completed' || status === 'failed' || status === 'cancelled';
+      return isTerminal ? false : 5000;
+    },
+  });
 
   // Add hotel mutation
   const addHotelMutation = useMutation({
@@ -121,11 +139,45 @@ export function HotelGroupDetail() {
 
   // Import hotels mutation
   const importMutation = useMutation({
-    mutationFn: () => importHotels(id!, importFile!),
+    mutationFn: () =>
+      importFormat === 'master'
+        ? importMasterHotels(id!, importFile!)
+        : importHotels(id!, importFile!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hotelGroup', id] });
       setIsImportOpen(false);
       setImportFile(null);
+    },
+  });
+
+  // Create scheduled scrape config mutation
+  const createScheduleMutation = useMutation({
+    mutationFn: () =>
+      createScheduledScrapeConfig({
+        hotel_group_id: id!,
+        name: scheduleName || undefined,
+        cron_expression: scheduleCron,
+        lookahead_days: scheduleLookahead
+          .split(',')
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => !isNaN(n)),
+        method: scheduleMethod,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduledScrapeConfigs', id] });
+      setIsScheduleOpen(false);
+      setScheduleName('');
+      setScheduleCron('0 6 * * 1');
+      setScheduleLookahead('7,30');
+      setScheduleMethod('serpapi');
+    },
+  });
+
+  // Delete scheduled scrape config mutation
+  const deleteScheduleMutation = useMutation({
+    mutationFn: (configId: string) => deleteScheduledScrapeConfig(configId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduledScrapeConfigs', id] });
     },
   });
 
@@ -164,6 +216,13 @@ export function HotelGroupDetail() {
     }
   };
 
+  const handleCreateSchedule = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (scheduleCron.trim()) {
+      createScheduleMutation.mutate();
+    }
+  };
+
   const handleViewResults = () => {
     if (activeJobId) {
       setIsProgressOpen(false);
@@ -195,97 +254,184 @@ export function HotelGroupDetail() {
   const { group, hotels } = data;
 
   return (
-    <div className="container mx-auto py-8 px-4">
+    <div className="max-w-[1400px] mx-auto py-6 px-7">
+      {/* Back link */}
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 mb-3.5"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Back to Dashboard
+      </Link>
+
       {/* Header */}
-      <div className="mb-6">
-        <Button variant="ghost" asChild className="mb-4">
-          <Link to="/">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Dashboard
-          </Link>
-        </Button>
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">{group.name}</h1>
-            {group.description && (
-              <p className="text-muted-foreground mt-1">{group.description}</p>
-            )}
-            <p className="text-sm text-muted-foreground mt-2">
-              {hotels.length} hotel{hotels.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-          <Button
-            size="lg"
-            onClick={() => setIsScrapeFormOpen(true)}
-            disabled={hotels.length === 0}
-          >
-            <Play className="h-4 w-4 mr-2" />
-            Run Price Scrape
-          </Button>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-bold">🏨 {group.name}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {hotels.length} hotel{hotels.length !== 1 ? 's' : ''}
+            {group.description && ` · ${group.description}`}
+          </p>
         </div>
+        <Button onClick={() => setIsScrapeFormOpen(true)} disabled={hotels.length === 0}>
+          <Play className="h-4 w-4 mr-2" />
+          New Price Search
+        </Button>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="hotels">
-        <TabsList>
-          <TabsTrigger value="hotels">Hotels</TabsTrigger>
-          <TabsTrigger value="history">
-            <History className="h-4 w-4 mr-2" />
-            Past Reports
-          </TabsTrigger>
-        </TabsList>
+      {/* Actions */}
+      <div className="flex items-center gap-2.5 mb-5">
+        <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+          <Upload className="h-4 w-4 mr-2" />
+          Import Excel
+        </Button>
+        <Button variant="outline" onClick={() => setIsAddHotelOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Hotel
+        </Button>
+        <Button
+          variant="outline"
+          className="ml-auto"
+          onClick={async () => {
+            const response = await apiClient.get('/export/price-history', {
+              params: { hotel_group_id: id, format: 'csv' },
+              responseType: 'blob',
+            });
+            downloadBlob(response.data, `${group.name.replace(/\s+/g, '-')}-price-history.csv`);
+          }}
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Export Price History
+        </Button>
+      </div>
 
-        {/* Hotels Tab */}
-        <TabsContent value="hotels" className="mt-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Button variant="outline" onClick={() => setIsAddHotelOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Hotel
-            </Button>
-            <Button variant="outline" onClick={() => setIsImportOpen(true)}>
-              <Upload className="h-4 w-4 mr-2" />
-              Import Excel
-            </Button>
+      {/* Hotels card */}
+      <Card className="mb-5">
+        <div className="px-5 py-3.5 border-b flex items-center justify-between">
+          <h2 className="text-sm font-bold">Hotels ({hotels.length})</h2>
+        </div>
+        <HotelTable
+          hotels={hotels}
+          onRemove={(hotelId) => removeHotelMutation.mutate(hotelId)}
+          isRemoving={removeHotelMutation.isPending}
+        />
+      </Card>
+
+      {/* Scheduled Scrapes card */}
+      <Card className="mb-5">
+        <div className="px-5 py-3.5 border-b flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-bold">Scheduled Scrapes</h2>
           </div>
-          <HotelTable
-            hotels={hotels}
-            onRemove={(hotelId) => removeHotelMutation.mutate(hotelId)}
-            isRemoving={removeHotelMutation.isPending}
-          />
-        </TabsContent>
+          <Button variant="outline" size="sm" onClick={() => setIsScheduleOpen(true)}>
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
+            New Schedule
+          </Button>
+        </div>
+        {schedules && schedules.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Cron</TableHead>
+                <TableHead>Method</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Next run</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {schedules.map((sched) => (
+                <TableRow key={sched.id}>
+                  <TableCell className="font-medium">{sched.name || '—'}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">
+                    {sched.cron_expression}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="info">{sched.method}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={sched.is_active ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}>
+                      {sched.is_active ? 'Active' : 'Paused'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {sched.next_run_at ? formatRelativeTime(sched.next_run_at) : '—'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteScheduleMutation.mutate(sched.id)}
+                      disabled={deleteScheduleMutation.isPending}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <div className="text-center py-8 text-muted-foreground text-sm">
+            No scheduled scrapes yet. Create one to run this group automatically on a cron schedule.
+          </div>
+        )}
+      </Card>
 
-        {/* History Tab */}
-        <TabsContent value="history" className="mt-6">
-          {jobs && jobs.length > 0 ? (
-            <div className="space-y-3">
+      {/* Recent Jobs card */}
+      <Card>
+        <div className="px-5 py-3.5 border-b flex items-center gap-2">
+          <History className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-bold">Recent Price Search Jobs</h2>
+        </div>
+        {jobs && jobs.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Dates</TableHead>
+                <TableHead>Guests</TableHead>
+                <TableHead>Method</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Created</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {jobs.map((job: ScrapeJob) => (
-                <div
+                <TableRow
                   key={job.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/30 cursor-pointer"
+                  className="cursor-pointer"
                   onClick={() => navigate(`/reports/${job.id}`)}
                 >
-                  <div>
-                    <div className="font-medium">
-                      {formatDate(job.checkin_date)} - {formatDate(job.checkout_date)}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {job.rooms} room{job.rooms !== 1 ? 's' : ''}, {job.adults} adult
-                      {job.adults !== 1 ? 's' : ''} • {formatRelativeTime(job.created_at)}
-                    </div>
-                  </div>
-                  <Badge className={getStatusColor(job.status)}>
-                    {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-                  </Badge>
-                </div>
+                  <TableCell className="font-medium">
+                    {formatDate(job.checkin_date)} – {formatDate(job.checkout_date)}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {job.rooms} room{job.rooms !== 1 ? 's' : ''}, {job.adults} adult
+                    {job.adults !== 1 ? 's' : ''}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="info">{job.method}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={getStatusColor(job.status)}>
+                      {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {formatRelativeTime(job.created_at)}
+                  </TableCell>
+                </TableRow>
               ))}
-            </div>
-          ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              No past reports yet. Run a price scrape to create one.
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+            </TableBody>
+          </Table>
+        ) : (
+          <div className="text-center py-12 text-muted-foreground">
+            No past reports yet. Run a price scrape to create one.
+          </div>
+        )}
+      </Card>
 
       {/* Add Hotel Dialog */}
       <Dialog open={isAddHotelOpen} onOpenChange={setIsAddHotelOpen}>
@@ -354,7 +500,30 @@ export function HotelGroupDetail() {
                 Upload an Excel file to import multiple hotels
               </DialogDescription>
             </DialogHeader>
-            <div className="py-4">
+            <div className="py-4 space-y-4">
+              <div>
+                <Label className="mb-2 block">Format</Label>
+                <div className="flex gap-4 text-sm">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="importFormat"
+                      checked={importFormat === 'plain'}
+                      onChange={() => setImportFormat('plain')}
+                    />
+                    Simple — hotel_name, city, country
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="importFormat"
+                      checked={importFormat === 'master'}
+                      onChange={() => setImportFormat('master')}
+                    />
+                    Master hotel list — HID, Hotel-Name, UPDATE URL, SLUG, Supplier-or-Direct, Country
+                  </label>
+                </div>
+              </div>
               <ExcelUploader
                 onFileSelect={setImportFile}
                 selectedFile={importFile}
@@ -383,6 +552,79 @@ export function HotelGroupDetail() {
         </DialogContent>
       </Dialog>
 
+      {/* New Schedule Dialog */}
+      <Dialog open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
+        <DialogContent>
+          <form onSubmit={handleCreateSchedule}>
+            <DialogHeader>
+              <DialogTitle>New Scheduled Scrape</DialogTitle>
+              <DialogDescription>
+                Runs this group's price search automatically on a recurring schedule.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="schedule-name">Name</Label>
+                <Input
+                  id="schedule-name"
+                  value={scheduleName}
+                  onChange={(e) => setScheduleName(e.target.value)}
+                  placeholder="e.g., Weekly Bangkok check"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="schedule-cron">Cron expression *</Label>
+                <Input
+                  id="schedule-cron"
+                  value={scheduleCron}
+                  onChange={(e) => setScheduleCron(e.target.value)}
+                  placeholder="0 6 * * 1"
+                  className="font-mono"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Standard 5-field cron, e.g. <code>0 6 * * 1</code> = every Monday at 06:00.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="schedule-lookahead">Lookahead days</Label>
+                <Input
+                  id="schedule-lookahead"
+                  value={scheduleLookahead}
+                  onChange={(e) => setScheduleLookahead(e.target.value)}
+                  placeholder="7,30"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Comma-separated days ahead of the run date to check in (e.g. 7,30).
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="schedule-method">Method</Label>
+                <select
+                  id="schedule-method"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={scheduleMethod}
+                  onChange={(e) => setScheduleMethod(e.target.value as ScrapeMethod)}
+                >
+                  <option value="serpapi">SerpAPI</option>
+                  <option value="chatgpt">ChatGPT</option>
+                  <option value="gemini">Gemini</option>
+                  <option value="both">Both</option>
+                </select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsScheduleOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!scheduleCron.trim() || createScheduleMutation.isPending}>
+                {createScheduleMutation.isPending ? 'Creating...' : 'Create Schedule'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Scrape Job Form */}
       <ScrapeJobForm
         open={isScrapeFormOpen}
@@ -395,7 +637,7 @@ export function HotelGroupDetail() {
       <ProgressTracker
         open={isProgressOpen}
         onOpenChange={setIsProgressOpen}
-        job={activeJob}
+        results={activeResults ?? null}
         onCancel={() => cancelJobMutation.mutate()}
         onViewResults={handleViewResults}
         isLoading={cancelJobMutation.isPending}

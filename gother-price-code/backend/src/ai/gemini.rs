@@ -52,6 +52,11 @@ impl GeminiClient {
         Ok(comparisons)
     }
 
+    /// Generate raw text from an arbitrary prompt (used by `GeminiScraper`).
+    pub async fn generate_raw(&self, prompt: &str) -> Result<String> {
+        self.generate(prompt).await
+    }
+
     /// Generate text using Gemini
     async fn generate(&self, prompt: &str) -> Result<String> {
         let url = format!(

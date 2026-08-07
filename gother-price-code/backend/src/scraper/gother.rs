@@ -55,6 +55,11 @@ struct GotherRoom {
     cancellation_policy: Option<String>,
     #[allow(dead_code)]
     available: bool,
+    /// WHO ID for this rate (REQ-001 F-025). Not confirmed whether Gother's
+    /// API actually returns this field today — deserialize as optional and
+    /// never fabricate a value if it's absent.
+    #[serde(default)]
+    who_id: Option<String>,
 }
 
 #[async_trait]
@@ -118,7 +123,7 @@ impl Scraper for GotherScraper {
                 .map(|m| normalizer::normalize_meal_plan(m));
 
             results.push(ScrapeResult {
-                source: "gother".to_string(),
+                source: super::providers::GOTHER.to_string(),
                 room_type: normalized_room,
                 price_thb,
                 original_price: Some(room.price),
@@ -134,6 +139,7 @@ impl Scraper for GotherScraper {
                         .map(|h| h.name.clone())
                         .unwrap_or_default()
                 )),
+                who_id: room.who_id.clone(),
             });
         }
 

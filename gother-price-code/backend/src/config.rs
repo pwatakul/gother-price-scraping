@@ -32,6 +32,10 @@ pub struct Config {
     pub gemini_api_key: Option<String>,
     pub gemini_model: String,
 
+    // OpenAI / ChatGPT scraper (Method 1, optional/bonus)
+    pub openai_api_key: Option<String>,
+    pub openai_model: String,
+
     // Application
     pub app_host: String,
     pub app_port: u16,
@@ -87,6 +91,11 @@ impl Config {
             gemini_api_key: env::var("GEMINI_API_KEY").ok(),
             gemini_model: env::var("GEMINI_MODEL")
                 .unwrap_or_else(|_| "gemini-pro".to_string()),
+
+            // OpenAI / ChatGPT scraper
+            openai_api_key: env::var("OPENAI_API_KEY").ok(),
+            openai_model: env::var("OPENAI_MODEL")
+                .unwrap_or_else(|_| "gpt-4o-mini".to_string()),
 
             // Application
             app_host: env::var("APP_HOST")

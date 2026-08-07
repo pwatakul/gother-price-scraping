@@ -1,5 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
+import * as XLSX from 'xlsx';
 import { Upload, FileSpreadsheet, X, Download } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/utils';
@@ -12,8 +13,40 @@ interface ExcelUploaderProps {
   onClear: () => void;
 }
 
+const PREVIEW_ROW_COUNT = 3;
+
 export function ExcelUploader({ onFileSelect, selectedFile, onClear }: ExcelUploaderProps) {
   const [isDownloading, setIsDownloading] = useState(false);
+  const [previewRows, setPreviewRows] = useState<Record<string, unknown>[]>([]);
+  const [totalRows, setTotalRows] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!selectedFile) {
+      setPreviewRows([]);
+      setTotalRows(null);
+      return;
+    }
+
+    let cancelled = false;
+    selectedFile.arrayBuffer().then((buf) => {
+      if (cancelled) return;
+      try {
+        const workbook = XLSX.read(buf);
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null });
+        setTotalRows(rows.length);
+        setPreviewRows(rows.slice(0, PREVIEW_ROW_COUNT));
+      } catch (e) {
+        console.error('Failed to parse Excel file for preview:', e);
+        setPreviewRows([]);
+        setTotalRows(null);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFile]);
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -46,18 +79,62 @@ export function ExcelUploader({ onFileSelect, selectedFile, onClear }: ExcelUplo
   };
 
   if (selectedFile) {
+    const columns = previewRows.length > 0 ? Object.keys(previewRows[0]) : [];
+
     return (
-      <div className="flex items-center gap-3 p-4 border rounded-lg bg-muted/30">
-        <FileSpreadsheet className="h-8 w-8 text-green-600" />
-        <div className="flex-1 min-w-0">
-          <p className="font-medium truncate">{selectedFile.name}</p>
-          <p className="text-sm text-muted-foreground">
-            {(selectedFile.size / 1024).toFixed(1)} KB
-          </p>
+      <div className="space-y-3">
+        <div className="flex items-center gap-3 p-3 border rounded-lg bg-green-50 border-green-200">
+          <FileSpreadsheet className="h-6 w-6 text-green-600 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate text-green-800">
+              ✅ {selectedFile.name} uploaded
+              {totalRows !== null && ` / ${totalRows} row${totalRows !== 1 ? 's' : ''} detected`}
+            </p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClear}>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClear}>
-          <X className="h-4 w-4" />
-        </Button>
+
+        {columns.length > 0 && (
+          <div className="border rounded-lg overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-[#f8fafc] border-b">
+                  {columns.map((col) => (
+                    <th key={col} className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-slate-500">
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewRows.map((row, i) => (
+                  <tr key={i} className={cn('border-b last:border-0', i % 2 === 1 && 'bg-[#f8fafc]')}>
+                    {columns.map((col) => {
+                      const value = row[col];
+                      const isBlank = value === null || value === undefined || value === '';
+                      return (
+                        <td key={col} className="px-3 py-2 whitespace-nowrap">
+                          {isBlank ? (
+                            <span className="italic text-slate-400">— (job default)</span>
+                          ) : (
+                            String(value)
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {totalRows !== null && totalRows > PREVIEW_ROW_COUNT && (
+              <div className="px-3 py-1.5 text-xs text-muted-foreground bg-[#f8fafc] border-t">
+                Showing {PREVIEW_ROW_COUNT} of {totalRows} rows
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }

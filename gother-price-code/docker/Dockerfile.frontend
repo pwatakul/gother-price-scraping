@@ -3,19 +3,22 @@
 # ===========================================
 # Multi-stage build for optimized production image
 
+# Build context is the gother-price-code/ repo root (see docker-compose.yml)
+# so this Dockerfile can COPY both frontend/ and docker/nginx.conf.
+
 # Stage 1: Build
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 # Copy package files
-COPY package.json package-lock.json* ./
+COPY frontend/package.json frontend/package-lock.json* ./
 
 # Install dependencies
 RUN npm ci
 
 # Copy source code
-COPY . .
+COPY frontend/. .
 
 # Build the application
 RUN npm run build
@@ -24,7 +27,7 @@ RUN npm run build
 FROM nginx:alpine AS runtime
 
 # Copy nginx config
-COPY ../docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy built assets
 COPY --from=builder /app/dist /usr/share/nginx/html

@@ -61,6 +61,9 @@ async-trait = "0.1"
 # Random (for mock data)
 rand = "0.8"
 
+# Cron expression parsing (scheduled scraping)
+cron = "0.12"
+
 [dev-dependencies]
 # Testing
 tokio-test = "0.4"

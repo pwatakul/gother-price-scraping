@@ -1,70 +1,62 @@
 ---
-title: Sprint 01 — Competition Critical Backend
+title: Sprint 01 — Design Decisions & Migrations
 type: sprint
 status: Active
-start: 2026-04-28
-end: 2026-05-04
-tags: [sprint, competition, backend]
-related: ["[[REQ-001-v1.1]]", "[[REQ-002-v1.0]]", "[[data-model-v1.1]]"]
+start: 2026-07-30
+end: 2026-08-01
+tags: [sprint, competition, design, backend]
+related: ["[[REQ-001-v1.2]]", "[[REQ-002-v1.0]]", "[[REQ-005-v1.0]]", "[[ADR-001-scraper-choice]]", "[[ADR-002-price-history-schema]]"]
 ---
 
-# Sprint 01 — Competition Critical Backend
-_Apr 28 – May 4 (7 days)_
+# Sprint 01 — Design Decisions & Migrations
+_Jul 30 – Aug 1 (3 days)_
 
 ## Sprint Goal
-Ship all backend changes required for the competition demo: schema migrations, Excel fix, ChatGPT scraper (Method 1), evidence in API response, and dual-write to `hotel_price_history`.
+Close the 3 open design questions blocking [[REQ-001-v1.2]] before any related schema or scraper code is written, then land the schema migrations that depend on those decisions. This sprint exists because CONTEXT.md's implementation gate ("no implementation until design sign-off") is still active and the CEO brief data (`docs/raw/Req price scrapping - 17 July 26.xlsx`, parsed 2026-07-27) introduced real gaps that were never resolved.
 
 ## Context
 Code lives at: `gother-price-code/`
 - Backend: `gother-price-code/backend/`
-- Frontend: `gother-price-code/frontend/`
-- Migrations: `gother-price-code/backend/migrations/` (currently 001–006)
+- Migrations: `gother-price-code/backend/migrations/` (currently 001–006 only — verified 2026-07-30)
 
 > [!WARNING]
-> **Competition deadline: May 15.** Do not gold-plate. Minimum viable implementation for each task.
+> **Deadline: Aug 17, 2026.** This sprint is 3 days — do not let ADR discussion sprawl. Each open question needs a decision, not a perfect answer.
 
 ---
 
 ## Planned Tasks
 
-| # | Task | REQ | File(s) | Priority | Status |
-|---|------|-----|---------|----------|--------|
-| 1 | **Migration 007** — create `product_type` enum | REQ-001 | `migrations/007_add_product_type_enum.sql` | High | Todo |
-| 2 | **Migration 008** — add `method` + `product_type` columns to `scrape_jobs` | REQ-001 | `migrations/008_add_method_product_type_to_scrape_jobs.sql` | High | Todo |
-| 3 | **Migration 009** — create `currency_exchange_rates` table | REQ-002 | `migrations/009_create_currency_exchange_rates.sql` | High | Todo |
-| 4 | **Migration 010** — create partitioned `hotel_price_history` table + indexes | REQ-002 | `migrations/010_create_hotel_price_history.sql` | High | Todo |
-| 5 | **Migration 011** — create initial monthly partitions (Apr–Aug 2026) | REQ-002 | `migrations/011_create_hotel_price_history_partitions.sql` | High | Todo |
-| 6 | **Migration 012** — create `scheduled_scrape_configs` table | REQ-002 | `migrations/012_create_scheduled_scrape_configs.sql` | High | Todo |
-| 7 | **Fix Excel import** — add checkin_date, checkout_date, rooms, adults, currency columns; implement JobDefaults fallback in `ExcelReader` | REQ-001 F-002 | `src/excel/reader.rs` | High | Todo |
-| 8 | **Add `method` to scrape_job model + API** — update `ScrapeJob` struct, `CreateScrapeJobRequest`, DB insert, and `ScrapeJobMessage` to carry `method` field | REQ-001 F-004 | `src/models/`, `src/api/`, `src/queue/` | High | Todo |
-| 9 | **Add `price_diff_percent` to response** — compute `((gother_price - best_price) / best_price) * 100` in results handler; add to `HotelPriceComparison` struct | REQ-001 F-011 | `src/api/responses.rs`, `src/api/handlers/` | High | Todo |
-| 10 | **Add evidence to API response** — expose `source_url` + `scraped_at` inside each `PriceEntry` in the results response (already stored in DB, just not returned) | REQ-001 F-011 | `src/api/responses.rs`, `src/api/handlers/` | High | Todo |
-| 11 | **ChatGPT scraper (Method 1)** — implement `ChatGptScraper` using OpenAI API; prompt requests strict `ChatGptHotelPriceJson` schema; merge results with SerpAPI results | REQ-001 F-020 | `src/scraper/chatgpt.rs` (new file) | High | Todo |
-| 12 | **Dual-write to `hotel_price_history`** — after each hotel scrape succeeds, insert rows into `hotel_price_history` (lookup/create `currency_exchange_rates` entry first) | REQ-002 F-001 | `src/worker/` | High | Todo |
-| 13 | **Migration 013** — create materialized views (`mv_hotel_market_position`, `mv_hotel_daily_avg_price`, `mv_hotel_win_rate`) | REQ-005 | `migrations/013_create_materialized_views.sql` | Medium | Todo |
+| # | Task | REQ | Output | Priority | Status |
+|---|------|-----|--------|----------|--------|
+| 1 | **Decide hotel-list import format** — brief's real list (`HID, Hotel-Name, UPDATE URL, SLUG, Supplier-or-Direct, Country, SEARCH`) vs. F-002 spec (`hotel_name, city, country, checkin_date,...`). Decide: extend F-002 to accept both, or redesign import around HID/SLUG as primary key. | REQ-001 F-002 | `docs/decisions/ADR-003-hotel-list-import-format.md` | High | Todo |
+| 2 | **Decide output schema handling** — brief's example output (`task_id`, `Scrapping Round`, split tax-exclusive/inclusive price pairs, structured `Notes` codes) vs. current `hotel_price_history`. Decide: add columns, or export-time transform. | REQ-001/002 | `docs/decisions/ADR-004-output-schema-mapping.md` | High | Todo |
+| 3 | **Decide provider-specific scraping approach (F-022)** — can SerpAPI's Google Hotels aggregation reliably attribute results to Agoda/Trip/Wink specifically, or are dedicated per-OTA scrapers required? Time-box investigation to half a day; decide based on what's actually testable, not theoretical. | REQ-001 F-022 | `docs/decisions/ADR-005-provider-specific-scraping.md` | High | Todo |
+| 4 | **Decide cron/scheduling approach** — in-process scheduler (tokio-cron-scheduler) vs. external cron hitting an API trigger, for weekly `scheduled_scrape_configs` runs. Flagged as needed in CONTEXT.md's "Design work still needed." | REQ-002 F-003/F-005 | `docs/decisions/ADR-006-cron-approach.md` | Medium | Todo |
+| 5 | **Migration 007** — create `product_type` enum | REQ-001 | `migrations/007_add_product_type_enum.sql` | High | Todo |
+| 6 | **Migration 008** — add `method` + `product_type` columns to `scrape_jobs` | REQ-001 | `migrations/008_add_method_product_type_to_scrape_jobs.sql` | High | Todo |
+| 7 | **Migration 009** — create `currency_exchange_rates` table | REQ-002 | `migrations/009_create_currency_exchange_rates.sql` | High | Todo |
+| 8 | **Migration 010** — create partitioned `hotel_price_history` table + indexes, incorporating the ADR-004 output-schema decision (task_id, Scrapping Round, tax-exclusive/inclusive pairs if in-schema) | REQ-002/005 | `migrations/010_create_hotel_price_history.sql` | High | Todo |
+| 9 | **Migration 011** — create initial monthly partitions (Aug–Dec 2026) | REQ-002/005 | `migrations/011_create_hotel_price_history_partitions.sql` | High | Todo |
+| 10 | **Migration 012** — create `scheduled_scrape_configs` table, shaped per ADR-006 | REQ-002 | `migrations/012_create_scheduled_scrape_configs.sql` | High | Todo |
+| 11 | **Update REQ-001 to v1.3** — close the 3 open questions in [[REQ-001-v1.2]], record decisions in the Change Log, do not overwrite v1.2 | REQ-001 | `docs/requirements/REQ-001-v1.3.md` | High | Todo |
 
 ---
 
 ## Definition of Done (per task)
-- Code compiles (`cargo build` passes)
-- `cargo test` passes (or new test added for new behaviour)
-- Manual smoke test: run Docker Compose, hit the endpoint, verify expected output
+- ADRs: decision recorded, alternatives considered, consequence noted (use `docs/decisions/ADR-000-template.md`)
+- Migrations: `sqlx migrate run` succeeds against a clean database; `cargo build` passes
+- REQ-001-v1.3 created (not overwriting v1.2), Open Questions section shows all 3 closed
 
 ---
 
 ## Blockers / Notes
-- **Gother API endpoint + auth** — not yet supplied. Use existing `GotherScraper` as-is. Do not block on this.
-- **SerpAPI rate limits** — not confirmed. Keep `WORKER_CONCURRENCY=3` as safe default.
-- **OpenAI API key** — needed for Task 11. Set `OPENAI_API_KEY` in `.env`.
-- **`OPENAI_API_KEY` missing** → `ChatGptScraper` should fall back to `MockScraper` (same pattern as existing API key guard).
-- Migration 013 (materialized views) is Medium priority — skip if time runs short; analytics dashboard can be built after competition.
+- Task 3 (provider attribution) is the highest-risk open question — if SerpAPI can't reliably attribute to named providers, Sprint 02's F-022 work balloons into building per-OTA scrapers from scratch. Surface this risk immediately if discovered, don't wait for sprint end.
+- Do not start Sprint 02 backend work until Tasks 1–4 (ADRs) are signed off — this is the explicit design gate from CONTEXT.md.
 
 ---
 
 ## Carries to Sprint 02
-- Frontend: evidence expand panel, ⚠️ badge, price_diff_percent display
-- Excel export: add evidence + price_diff_percent columns
-- End-to-end demo flow testing
+- All scraper/API implementation work (nothing implemented this sprint beyond migrations)
 
 ## Retrospective
 _Fill at end of sprint._

@@ -1,8 +1,8 @@
 ---
 title: API Design
 type: design
-version: "1.0"
-updated: 2026-04-22
+version: "1.1"
+updated: 2026-08-04
 tags: [design, api, rest]
 ---
 
@@ -153,6 +153,21 @@ REST JSON API served by the Rust/Axum backend. All endpoints are prefixed under 
 
 ---
 
+#### `POST /hotel-groups/:id/import-master`
+**Description:** Import hotels from the real master hotel-list format (REQ-001-v1.2 F-021), separate from the plain 3-column import above so neither path risks the other. Hotels are keyed by `HID` (find-or-create) rather than name+city+country.
+
+**Request (multipart/form-data):**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| file | file | Yes | Excel (.xlsx) matching `hotel-list-2200.csv`: `No, HID, Hotel-Name, UPDATE URL, SLUG, Supplier-or-Direct, Country, SEARCH` |
+
+**Response 200:**
+```json
+{ "success": true, "imported_count": 2200 }
+```
+
+---
+
 #### `POST /hotel-groups/:id/hotels`
 **Description:** Add a single hotel to a group (find-or-create by name + city + country).
 
@@ -233,9 +248,14 @@ REST JSON API served by the Rust/Axum backend. All endpoints are prefixed under 
   "checkout_date": "2026-05-03",
   "rooms": 1,
   "adults": 2,
-  "force_refresh": false
+  "force_refresh": false,
+  "method": "serpapi",
+  "los_variants": [1],
+  "device": "desktop",
+  "login_state": "public"
 }
 ```
+`method`, `los_variants`, `device`, `login_state` are all optional; defaults are `"serpapi"`, `[1]`, `"desktop"`, `"public"` respectively. `method: "chatgpt"` and `"both"` are REQ-001 F-020 (bonus); `"chatgpt"` is silently skipped if `OPENAI_API_KEY` isn't configured, same as `"serpapi"` falling back to the mock scraper when `SERPAPI_KEY` is unset.
 
 **Response 200:**
 ```json
@@ -248,10 +268,30 @@ REST JSON API served by the Rust/Axum backend. All endpoints are prefixed under 
   "adults": 2,
   "status": "pending",
   "force_refresh": false,
+  "method": "serpapi",
+  "los_variants": [1],
+  "device": "desktop",
+  "login_state": "public",
   "created_at": "2026-04-22T10:00:00Z",
   "completed_at": null
 }
 ```
+
+---
+
+#### `POST /scrape-jobs/with-overrides`
+**Description:** Same as `POST /scrape-jobs`, but accepts an optional per-hotel search-parameter override sheet (REQ-001 F-002 JobDefaults fallback). Multipart, not JSON.
+
+**Request (multipart/form-data):**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| job | text (JSON) | Yes | Same body shape as `POST /scrape-jobs` |
+| overrides | file | No | Excel (.xlsx) keyed by `hid` (or `hotel_name`, currently unresolved — see note below), with optional `checkin_date`/`checkout_date`/`rooms`/`adults`/`currency` columns. Blank cells fall back to the job-level defaults above. |
+
+> [!NOTE]
+> Rows keyed only by `hotel_name` (no `hid`) are currently **not** resolved — matching by name across potential duplicates is ambiguous, so only `hid`-keyed override rows take effect. `hid` is the reliable key because it comes from the master hotel-list import.
+
+**Response 200:** Same as `POST /scrape-jobs`.
 
 ---
 
@@ -313,7 +353,7 @@ REST JSON API served by the Rust/Axum backend. All endpoints are prefixed under 
   },
   "results": [
     {
-      "hotel": { "id": "uuid", "name": "Mandarin Oriental Bangkok", "city": "Bangkok", "country": "Thailand" },
+      "hotel": { "id": "uuid", "name": "Mandarin Oriental Bangkok", "city": "Bangkok", "country": "Thailand", "hid": 10234 },
       "status": "success",
       "error_message": null,
       "prices": [
@@ -325,17 +365,25 @@ REST JSON API served by the Rust/Axum backend. All endpoints are prefixed under 
           "currency": "THB",
           "meal_plan": "Room Only",
           "cancellation": "Free cancellation",
-          "source_url": "https://..."
+          "source_url": "https://...",
+          "scraped_at": "2026-08-04T10:00:00Z",
+          "los_nights": 1,
+          "who_id": null,
+          "is_direct_contract": false,
+          "mismatch_warning": null
         }
       ],
       "best_source": "agoda",
       "best_price": 12500.0,
       "gother_price": 11800.0,
-      "price_difference": -700.0
+      "price_difference": -700.0,
+      "price_diff_percent": -5.6
     }
   ]
 }
 ```
+
+`prices` only ever contains the four named providers (`gother`, `agoda`, `trip`, `wink`) — REQ-001-v1.2 F-022. A provider with no rate for this hotel/date is simply absent from the array (F-027: render blank, never `0`); the frontend renders `—` for missing columns. `wink` only appears for domestic (Thailand) hotels, and currently has no real scraper behind it, so it is always absent until a real Wink/HyperGuest data source is wired in. `who_id` is populated only for `source: "gother"` entries, and only if Gother's upstream API actually returns one (unconfirmed — see REQ-001-v1.3 open risk). `mismatch_warning` is set when a non-Gother entry's room type or cancellation policy differs from Gother's entry for the same hotel.
 
 ---
 
@@ -386,9 +434,10 @@ All error responses use this structure:
 
 ## Related
 - [[data-model]] — entity shapes behind each response
-- [[REQ-001-v1.0]] — functional requirements this API satisfies
+- [[REQ-001-v1.3]] — functional requirements this API satisfies
 
 ## Change Log
 | Version | Date | Change |
 |---------|------|--------|
 | 1.0 | 2026-04-22 | Initial — documented from implemented router and handlers |
+| 1.1 | 2026-08-04 | Added `import-master` and `with-overrides` endpoints; `method`/`los_variants`/`device`/`login_state` on scrape jobs; `scraped_at`/`who_id`/`is_direct_contract`/`mismatch_warning`/`price_diff_percent`/`hid` on results — REQ-001-v1.3 (F-002, F-011, F-020–F-027) |

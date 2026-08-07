@@ -169,6 +169,42 @@ pub async fn import_hotels(
     })))
 }
 
+/// Import hotels from the real master hotel-list format (REQ-001-v1.2
+/// F-021), separate from the plain hotel_name/city/country `import_hotels`
+/// endpoint above so neither import path risks the other.
+pub async fn import_master_hotels(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    mut multipart: Multipart,
+) -> AppResult<Json<serde_json::Value>> {
+    let _ = HotelGroupRepo::get_by_id(&state.db, id).await?;
+
+    let mut imported_count = 0;
+
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        crate::error::AppError::Validation(format!("Failed to parse form: {}", e))
+    })? {
+        if field.name() == Some("file") {
+            let data = field.bytes().await.map_err(|e| {
+                crate::error::AppError::Validation(format!("Failed to read file: {}", e))
+            })?;
+
+            let rows = ExcelReader::read_master_hotel_list(&data)?;
+
+            for row in rows {
+                let hotel = HotelRepo::find_or_create_by_hid(&state.db, &row).await?;
+                HotelGroupRepo::add_hotel(&state.db, id, hotel.id).await?;
+                imported_count += 1;
+            }
+        }
+    }
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "imported_count": imported_count
+    })))
+}
+
 /// Add a single hotel to group
 pub async fn add_hotel(
     State(state): State<Arc<AppState>>,

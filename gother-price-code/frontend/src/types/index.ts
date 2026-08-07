@@ -37,6 +37,10 @@ export interface Hotel {
   city: string;
   country: string;
   normalized_name: string;
+  hid: number | null;
+  slug: string | null;
+  update_url: string | null;
+  supplier_type: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -59,6 +63,9 @@ export interface CreateHotelRequest {
 
 // Scrape Job Types
 export type ScrapeJobStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type ScrapeMethod = 'serpapi' | 'chatgpt' | 'gemini' | 'both';
+export type Device = 'desktop' | 'mobile_web';
+export type LoginState = 'public' | 'member';
 
 export interface ScrapeJob {
   id: string;
@@ -69,6 +76,10 @@ export interface ScrapeJob {
   adults: number;
   status: ScrapeJobStatus;
   force_refresh: boolean;
+  method: ScrapeMethod;
+  los_variants: number[];
+  device: Device;
+  login_state: LoginState;
   created_at: string;
   completed_at: string | null;
 }
@@ -80,7 +91,7 @@ export interface ScrapeProgress {
   pending: number;
 }
 
-export interface ScrapeJobWithProgress extends ScrapeJob {
+export interface ScrapeJobWithProgress extends Omit<ScrapeJob, 'force_refresh' | 'los_variants'> {
   progress: ScrapeProgress;
 }
 
@@ -91,6 +102,10 @@ export interface CreateScrapeJobRequest {
   rooms: number;
   adults: number;
   force_refresh?: boolean;
+  method?: ScrapeMethod;
+  los_variants?: number[];
+  device?: Device;
+  login_state?: LoginState;
 }
 
 // Scrape Results Types
@@ -105,6 +120,11 @@ export interface PriceEntry {
   meal_plan: string | null;
   cancellation: string | null;
   source_url: string | null;
+  scraped_at: string;
+  los_nights: number;
+  who_id: string | null;
+  is_direct_contract: boolean;
+  mismatch_warning: string | null;
 }
 
 export interface HotelInfo {
@@ -112,6 +132,7 @@ export interface HotelInfo {
   name: string;
   city: string;
   country: string;
+  hid: number | null;
 }
 
 export interface HotelPriceComparison {
@@ -123,6 +144,7 @@ export interface HotelPriceComparison {
   best_price: number | null;
   gother_price: number | null;
   price_difference: number | null;
+  price_diff_percent: number | null;
 }
 
 export interface ScrapeJobInfo {
@@ -132,6 +154,9 @@ export interface ScrapeJobInfo {
   rooms: number;
   adults: number;
   status: string;
+  method: ScrapeMethod;
+  device: Device;
+  login_state: LoginState;
   created_at: string;
   completed_at: string | null;
 }
@@ -149,6 +174,116 @@ export interface ScrapeResultsResponse {
   results: HotelPriceComparison[];
 }
 
+// Hotel Directory Types (REQ-007 — global "All Hotels" page)
+export interface HotelWithGroupsAndPrice {
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  hid: number | null;
+  slug: string | null;
+  supplier_type: string | null;
+  group_names: string[];
+  last_price_thb: number | null;
+  last_price_source: string | null;
+  last_scraped_at: string | null;
+}
+
+export interface HotelListResponse {
+  hotels: HotelWithGroupsAndPrice[];
+  total: number;
+}
+
+export interface HotelDetail {
+  hotel: Hotel;
+  group_names: string[];
+  trend: PriceTrendPoint[];
+}
+
+// Analytics Types (REQ-003)
+export interface MarketOverview {
+  total_hotels: number;
+  gother_cheapest_pct: number;
+  avg_gap_thb: number;
+}
+
+export interface MarketPositionEntry {
+  hotel_id: string;
+  hotel_name: string;
+  gother_price: number | null;
+  best_price: number | null;
+  best_source: string | null;
+  gap_thb: number | null;
+  gap_pct: number | null;
+  is_winning: boolean;
+}
+
+export interface HeatmapCell {
+  hotel_id: string;
+  hotel_name: string;
+  source: string;
+  price_thb: number | null;
+  gap_pct: number | null;
+}
+
+export interface WinRateRow {
+  hotel_id: string;
+  days_won: number;
+  days_total: number;
+  win_rate_pct: number;
+}
+
+export interface BookingWindowRow {
+  source: string;
+  days_in_advance: number;
+  avg_price_thb: number;
+  min_price_thb: number;
+  sample_count: number;
+}
+
+export interface ParityViolationRow {
+  hotel_id: string;
+  hotel_name: string;
+  gother_price: number;
+  best_ota_price: number;
+  gap_pct: number;
+}
+
+export interface PriceTrendPoint {
+  source: string;
+  day: string;
+  avg_price_thb: number;
+  min_price_thb: number;
+  max_price_thb: number;
+  sample_count: number;
+}
+
+// Raw price-history row (one per scrape) — REQ-002 F-007
+export interface HotelPriceHistoryRow {
+  id: string;
+  hotel_id: string;
+  source: string;
+  room_type: string;
+  price_thb: number;
+  original_price: number | null;
+  currency: string | null;
+  exchange_rate_id: string;
+  meal_plan: string | null;
+  cancellation: string | null;
+  source_url: string | null;
+  checkin_date: string;
+  checkout_date: string;
+  rooms: number;
+  adults: number;
+  scrape_job_id: string | null;
+  scraped_at: string;
+}
+
+export interface PriceHistoryListResponse {
+  rows: HotelPriceHistoryRow[];
+  total: number;
+}
+
 // API Response Types
 export interface ApiError {
   error: {
@@ -162,4 +297,34 @@ export interface ApiError {
 export interface HotelGroupDetailResponse {
   group: HotelGroup;
   hotels: HotelWithPrice[];
+}
+
+// Scheduled Scrape Config Types (REQ-002 F-003/F-004)
+export interface ScheduledScrapeConfig {
+  id: string;
+  hotel_group_id: string;
+  name: string | null;
+  cron_expression: string;
+  lookahead_days: number[];
+  los_variants: number[];
+  method: ScrapeMethod;
+  rooms: number;
+  adults: number;
+  is_active: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateScheduledScrapeConfigRequest {
+  hotel_group_id: string;
+  name?: string;
+  cron_expression: string;
+  lookahead_days: number[];
+  los_variants?: number[];
+  method?: ScrapeMethod;
+  rooms?: number;
+  adults?: number;
+  is_active?: boolean;
 }
