@@ -10,7 +10,7 @@ use crate::api::AppState;
 use crate::cache::{CacheKeys, CacheOps};
 use crate::db::{CurrencyRepo, HotelRepo, MaterializedViewRepo, PriceHistoryRepo, ScrapeJobRepo, ScrapeResultRepo};
 use crate::excel::merge_job_params;
-use crate::models::scrape_job::{Device, LoginState, ScrapeMethod};
+use crate::models::scrape_job::{LoginState, ScrapeMethod};
 use crate::models::{Hotel, HotelScrapeStatus, JobDefaults, ScrapeJobMessage, ScrapeJobStatus};
 use crate::scraper::{ScrapeParams, ScrapeResult as ScraperResult, Scraper};
 
@@ -136,7 +136,7 @@ async fn process_hotel(state: &Arc<AppState>, message: &ScrapeJobMessage, hotel:
             params.rooms,
             params.adults,
             method_label(message.method),
-            device_label(message.device),
+            message.device.as_str(),
             login_state_label(message.login_state),
             los_nights,
         );
@@ -265,6 +265,8 @@ async fn save_results(
                 params.checkout_date,
                 params.rooms as i16,
                 params.adults as i16,
+                message.device,
+                &result.via_method,
                 Some(job_id),
             )
             .await;
@@ -277,16 +279,8 @@ async fn save_results(
 fn method_label(method: ScrapeMethod) -> &'static str {
     match method {
         ScrapeMethod::Serpapi => "serpapi",
-        ScrapeMethod::Chatgpt => "chatgpt",
         ScrapeMethod::Gemini => "gemini",
         ScrapeMethod::Both => "both",
-    }
-}
-
-fn device_label(device: Device) -> &'static str {
-    match device {
-        Device::Desktop => "desktop",
-        Device::MobileWeb => "mobile_web",
     }
 }
 
@@ -295,6 +289,87 @@ fn login_state_label(login_state: LoginState) -> &'static str {
         LoginState::Public => "public",
         LoginState::Member => "member",
     }
+}
+
+/// What one scraper did during a single hotel scrape, so a failure can
+/// name the responsible source instead of a blanket "no results".
+#[derive(Debug, PartialEq)]
+enum Outcome {
+    Ok(usize),
+    /// Ran and succeeded, but produced no rows — e.g. Gemini declining to
+    /// guess, or SerpAPI returning only non-named providers (ADR-005).
+    Empty,
+    /// No credential, so the factory never built a scraper.
+    NotConfigured,
+    /// A fallback source deliberately not run because the primary tier
+    /// already returned prices. Distinct from a failure — nothing is wrong.
+    SkippedPrimaryHadPrices,
+    Failed(String),
+}
+
+/// Should a deferred fallback source run? Only under `method=both`, and
+/// only when the primary tier found nothing at all. Pure so the precedence
+/// rule is testable without a DB, network or registry.
+fn should_run_fallback(method: ScrapeMethod, primary_rows: usize) -> bool {
+    method == ScrapeMethod::Both && primary_rows == 0
+}
+
+/// Build and run one factory, tagging every row it produced with its name
+/// so provenance is recorded at the point of production and cannot drift.
+async fn run_factory(
+    state: &Arc<AppState>,
+    factory: &dyn crate::scraper::registry::ScraperFactory,
+    params: &ScrapeParams,
+) -> (Outcome, Vec<ScraperResult>) {
+    let Some(scraper) = factory.build(&state.config) else {
+        return (Outcome::NotConfigured, Vec::new());
+    };
+
+    match scraper.scrape(params).await {
+        Ok(rows) if rows.is_empty() => (Outcome::Empty, Vec::new()),
+        Ok(mut rows) => {
+            for row in &mut rows {
+                row.via_method = factory.name().to_string();
+            }
+            (Outcome::Ok(rows.len()), rows)
+        }
+        Err(e) => {
+            tracing::warn!("{} scrape failed: {}", factory.name(), e);
+            (Outcome::Failed(e.to_string()), Vec::new())
+        }
+    }
+}
+
+/// Render per-scraper outcomes into one human-readable line. Pure, so the
+/// wording is unit-testable without a DB or network (same precedent as
+/// `is_due`, `standard_grid`, `partition_ranges`).
+fn summarize_outcomes(outcomes: &[(&str, Outcome)]) -> String {
+    // A disabled mock scraper is the normal, desired state — reporting
+    // "mock: not configured" in a user-facing error just adds noise and
+    // invites someone to "fix" it by turning fabricated data back on.
+    // Anything else it does (including producing rows) stays visible.
+    let visible: Vec<_> = outcomes
+        .iter()
+        .filter(|(name, outcome)| !(*name == "mock" && *outcome == Outcome::NotConfigured))
+        .collect();
+
+    if visible.is_empty() {
+        return "no scrapers are registered for this method".to_string();
+    }
+
+    visible
+        .iter()
+        .map(|(name, outcome)| match outcome {
+            Outcome::Ok(n) => format!("{name}: {n} price(s)"),
+            Outcome::Empty => format!("{name}: returned no rates"),
+            Outcome::NotConfigured => format!("{name}: not configured"),
+            Outcome::SkippedPrimaryHadPrices => {
+                format!("{name}: skipped (primary source had prices)")
+            }
+            Outcome::Failed(e) => format!("{name}: failed ({e})"),
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// Scrape hotel prices from all sources for the job's configured method,
@@ -308,37 +383,133 @@ async fn scrape_hotel_prices(
     params: &ScrapeParams,
     method: ScrapeMethod,
 ) -> Result<Vec<ScraperResult>> {
-    // Mock fallback: only when method is exactly Serpapi (not Both) and no
-    // SERPAPI_KEY is configured — preserves the original no-key dev/demo
-    // experience byte-for-byte. Any other method with a missing key just
-    // skips that factory (see loop below), never silently substituting
-    // fabricated data.
-    let serpapi_configured =
-        !state.config.serpapi_key.is_empty() && state.config.serpapi_key != "your_serpapi_key_here";
-    if method == ScrapeMethod::Serpapi && !serpapi_configured {
-        tracing::info!("Using mock scraper (SERPAPI_KEY not configured)");
-        let mock = crate::scraper::MockScraper::new();
-        return mock.scrape(params).await;
+    // A missing credential yields "not configured", never fabricated data.
+    // The mock scraper is a normal registry entry gated on
+    // ENABLE_MOCK_SCRAPER (ADR-008).
+    let mut all_results: Vec<ScraperResult> = Vec::new();
+    let mut outcomes: Vec<(&'static str, Outcome)> = Vec::new();
+
+    // Two tiers (ADR-011). Under `method=both` SerpAPI is authoritative and
+    // Gemini only fills total blanks, so a real scraped price is never sat
+    // next to an AI estimate for the same hotel and date. A fallback chosen
+    // explicitly (`method=gemini`) is not deferred — it *is* the primary.
+    let (deferred, primary): (Vec<_>, Vec<_>) = state
+        .scraper_registry
+        .iter()
+        .filter(|f| f.methods().contains(&method))
+        .partition(|f| f.is_fallback() && method == ScrapeMethod::Both);
+
+    for factory in primary {
+        let (outcome, rows) = run_factory(state, factory.as_ref(), params).await;
+        all_results.extend(rows);
+        outcomes.push((factory.name(), outcome));
     }
 
-    let mut all_results = Vec::new();
-
-    for factory in state.scraper_registry.iter() {
-        if !factory.methods().contains(&method) {
+    let primary_rows = all_results.len();
+    for factory in deferred {
+        if !should_run_fallback(method, primary_rows) {
+            outcomes.push((factory.name(), Outcome::SkippedPrimaryHadPrices));
             continue;
         }
-        match factory.build(&state.config) {
-            Some(scraper) => match scraper.scrape(params).await {
-                Ok(results) => all_results.extend(results),
-                Err(e) => tracing::warn!("{} scrape failed: {}", scraper.name(), e),
-            },
-            None => tracing::debug!("A scraper for method {:?} is not configured, skipping", method),
-        }
+        tracing::info!(
+            "No prices from the primary tier for {}; trying fallback {}",
+            params.hotel_name,
+            factory.name()
+        );
+        let (outcome, rows) = run_factory(state, factory.as_ref(), params).await;
+        all_results.extend(rows);
+        outcomes.push((factory.name(), outcome));
     }
 
     if all_results.is_empty() {
-        anyhow::bail!("No results from any source");
+        // Say which source did what — "No results from any source" alone
+        // cannot distinguish a missing API key from a provider that simply
+        // had no rates, which has cost real debugging time.
+        anyhow::bail!("No prices found — {}", summarize_outcomes(&outcomes));
     }
 
     Ok(all_results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_the_unconfigured_source() {
+        let out = summarize_outcomes(&[("serpapi", Outcome::NotConfigured)]);
+        assert_eq!(out, "serpapi: not configured");
+    }
+
+    /// The distinction that matters most: "no API key" must not read the
+    /// same as "the provider had nothing".
+    #[test]
+    fn distinguishes_not_configured_from_empty() {
+        let out = summarize_outcomes(&[
+            ("serpapi", Outcome::NotConfigured),
+            ("gemini", Outcome::Empty),
+        ]);
+        assert_eq!(out, "serpapi: not configured; gemini: returned no rates");
+    }
+
+    #[test]
+    fn includes_the_underlying_error_when_a_scraper_fails() {
+        let out = summarize_outcomes(&[("serpapi", Outcome::Failed("HTTP 401".into()))]);
+        assert!(out.contains("serpapi: failed"), "got: {out}");
+        assert!(out.contains("HTTP 401"), "underlying cause must survive: {out}");
+    }
+
+    #[test]
+    fn reports_counts_for_sources_that_did_return_rows() {
+        let out = summarize_outcomes(&[("serpapi", Outcome::Ok(2)), ("gother", Outcome::NotConfigured)]);
+        assert_eq!(out, "serpapi: 2 price(s); gother: not configured");
+    }
+
+    /// Precedence rule (ADR-011): Gemini fills blanks, it never competes
+    /// with a scraped price.
+    #[test]
+    fn fallback_runs_only_for_both_and_only_when_primary_found_nothing() {
+        assert!(should_run_fallback(ScrapeMethod::Both, 0));
+        assert!(!should_run_fallback(ScrapeMethod::Both, 1));
+        assert!(!should_run_fallback(ScrapeMethod::Both, 17));
+    }
+
+    /// Choosing a fallback source explicitly must not defer it — with
+    /// `method=gemini` there is no primary tier to wait for.
+    #[test]
+    fn explicit_method_never_defers() {
+        assert!(!should_run_fallback(ScrapeMethod::Gemini, 0));
+        assert!(!should_run_fallback(ScrapeMethod::Serpapi, 0));
+    }
+
+    #[test]
+    fn skipped_fallback_reads_as_a_skip_not_a_failure() {
+        let out = summarize_outcomes(&[
+            ("serpapi", Outcome::Ok(3)),
+            ("gemini", Outcome::SkippedPrimaryHadPrices),
+        ]);
+        assert_eq!(out, "serpapi: 3 price(s); gemini: skipped (primary source had prices)");
+    }
+
+    #[test]
+    fn handles_no_matching_scrapers() {
+        assert_eq!(
+            summarize_outcomes(&[]),
+            "no scrapers are registered for this method"
+        );
+    }
+
+    /// A disabled mock scraper is the desired state, so it should not
+    /// clutter an error the user reads — but if it actually ran, say so.
+    #[test]
+    fn hides_disabled_mock_but_reports_an_active_one() {
+        let hidden = summarize_outcomes(&[
+            ("serpapi", Outcome::Empty),
+            ("mock", Outcome::NotConfigured),
+        ]);
+        assert_eq!(hidden, "serpapi: returned no rates");
+
+        let shown = summarize_outcomes(&[("mock", Outcome::Empty)]);
+        assert_eq!(shown, "mock: returned no rates");
+    }
 }

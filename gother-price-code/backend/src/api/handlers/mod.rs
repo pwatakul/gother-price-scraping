@@ -3,6 +3,7 @@
 //! Request handlers for all API endpoints.
 
 pub mod analytics;
+pub mod auth;
 pub mod health;
 pub mod hotel_directory;
 pub mod hotel_groups;

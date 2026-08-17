@@ -2,11 +2,20 @@
 title: "ADR-001: Scraper Approach Choice"
 type: decision
 date: 2026-08-04
-status: Accepted
+status: Partially superseded
 tags: [adr, scraping, architecture]
+superseded_by: "[[ADR-007-remove-chatgpt-scraper]]"
 ---
 
 # ADR-001: Scraper Approach Choice
+
+> **Partially superseded (2026-08-11):** two decisions below no longer hold.
+> The ChatGPT scraper ("Method 1", bonus) was removed —
+> see [[ADR-007-remove-chatgpt-scraper]]. The `MockScraper` fallback for a
+> missing `SERPAPI_KEY` was removed after it wrote fabricated prices into
+> `hotel_price_history` and reported them as successful scrapes; mock is now
+> opt-in via `ENABLE_MOCK_SCRAPER` — see [[ADR-008-no-silent-mock-fallback]].
+> The SerpAPI, Gother and no-fabrication decisions still stand.
 
 ## Context
 The platform needs hotel price data from multiple OTAs (Agoda, Trip) plus Gother's own internal API, for a competition demo with a hard deadline and no guaranteed access to per-OTA scraping infrastructure or credentials. The brief also awards bonus points for a second, independent method (Method 1: ChatGPT + Gother API) alongside the primary method (Method 2: SerpAPI + Gother API). This ADR was originally left as an unfilled template despite SerpAPI already being the implemented choice — backfilled here (2026-08-04) to actually record the reasoning, now extended to cover the ChatGPT scraper and the provider-naming decision from [[ADR-005-provider-specific-scraping]].

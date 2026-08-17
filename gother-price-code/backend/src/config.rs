@@ -32,9 +32,11 @@ pub struct Config {
     pub gemini_api_key: Option<String>,
     pub gemini_model: String,
 
-    // OpenAI / ChatGPT scraper (Method 1, optional/bonus)
-    pub openai_api_key: Option<String>,
-    pub openai_model: String,
+    /// Opt-in only (ENABLE_MOCK_SCRAPER=true). The mock scraper fabricates
+    /// realistic-looking prices; it must never stand in for a missing key
+    /// silently, or fake data reaches hotel_price_history looking real.
+    /// See ADR-008.
+    pub enable_mock_scraper: bool,
 
     // Application
     pub app_host: String,
@@ -47,6 +49,13 @@ pub struct Config {
     // Polling
     pub polling_interval_ms: u64,
     pub price_cache_ttl_seconds: u64,
+
+    // Authentication (REQ-009)
+    /// Signing key for session JWTs. Required — see `from_env`.
+    pub jwt_secret: String,
+    /// Overrides the seeded admin password on first startup. When unset the
+    /// well-known default is used and logged at WARN.
+    pub admin_password: Option<String>,
 }
 
 impl Config {
@@ -92,10 +101,9 @@ impl Config {
             gemini_model: env::var("GEMINI_MODEL")
                 .unwrap_or_else(|_| "gemini-pro".to_string()),
 
-            // OpenAI / ChatGPT scraper
-            openai_api_key: env::var("OPENAI_API_KEY").ok(),
-            openai_model: env::var("OPENAI_MODEL")
-                .unwrap_or_else(|_| "gpt-4o-mini".to_string()),
+            enable_mock_scraper: env::var("ENABLE_MOCK_SCRAPER")
+                .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+                .unwrap_or(false),
 
             // Application
             app_host: env::var("APP_HOST")
@@ -124,6 +132,62 @@ impl Config {
                 .unwrap_or_else(|_| "3600".to_string())
                 .parse()
                 .context("PRICE_CACHE_TTL_SECONDS must be a number")?,
+
+            // Authentication — no fallback on purpose. A default signing key
+            // would let anyone who has read the source mint a valid session
+            // cookie, which makes the login screen decorative. Refusing to
+            // boot is the safe failure.
+            jwt_secret: read_jwt_secret()?,
+            admin_password: env::var("ADMIN_PASSWORD").ok().filter(|p| !p.is_empty()),
         })
     }
+
+    /// Minimal config for unit tests — every credential empty, so factories
+    /// resolve to "not configured" unless a test opts one in explicitly.
+    #[cfg(test)]
+    pub fn test_default() -> Self {
+        Self {
+            database_url: String::new(),
+            database_max_connections: 1,
+            redis_url: String::new(),
+            cache_ttl_seconds: 0,
+            rabbitmq_url: String::new(),
+            rabbitmq_queue_name: String::new(),
+            serpapi_key: String::new(),
+            serpapi_base_url: String::new(),
+            gother_api_url: String::new(),
+            gother_api_key: String::new(),
+            gemini_api_key: None,
+            gemini_model: String::new(),
+            enable_mock_scraper: false,
+            app_host: String::new(),
+            app_port: 0,
+            worker_concurrency: 1,
+            worker_retry_count: 0,
+            polling_interval_ms: 0,
+            price_cache_ttl_seconds: 0,
+            jwt_secret: "test-secret-that-is-long-enough-to-pass".to_string(),
+            admin_password: None,
+        }
+    }
+}
+
+/// Minimum length for `JWT_SECRET`. HS256 keys shorter than the 256-bit hash
+/// output add no security and are usually a placeholder someone meant to
+/// replace.
+const MIN_JWT_SECRET_LEN: usize = 32;
+
+fn read_jwt_secret() -> Result<String> {
+    let secret = env::var("JWT_SECRET").context(
+        "JWT_SECRET must be set — it signs login session cookies. \
+         Generate one with: openssl rand -base64 48",
+    )?;
+    if secret.trim().len() < MIN_JWT_SECRET_LEN {
+        anyhow::bail!(
+            "JWT_SECRET must be at least {} characters (got {})",
+            MIN_JWT_SECRET_LEN,
+            secret.trim().len()
+        );
+    }
+    Ok(secret)
 }

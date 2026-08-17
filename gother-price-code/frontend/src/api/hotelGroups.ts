@@ -3,14 +3,16 @@
 // ===========================================
 
 import apiClient from './client';
+import type { SearchConfig } from '@/components/SearchConfigForm';
 import type {
+  HotelGroup,
   HotelGroupWithCount,
   HotelGroupDetailResponse,
   CreateHotelGroupRequest,
   UpdateHotelGroupRequest,
   Hotel,
   CreateHotelRequest,
-  ScrapeJob,
+  GroupJobsResponse,
 } from '@/types';
 
 // List all hotel groups
@@ -110,14 +112,39 @@ export async function removeHotelFromGroup(groupId: string, hotelId: string): Pr
   await apiClient.delete(`/hotel-groups/${groupId}/hotels/${hotelId}`);
 }
 
-// List scrape jobs for group
+// List scrape jobs for group. Paginated server-side — job history grows
+// steadily (a scheduled grid adds 5 rows per fire), so the whole list is
+// not fetched just to show a page of it.
 export async function listGroupJobs(
   groupId: string,
   limit = 20,
   offset = 0
-): Promise<ScrapeJob[]> {
-  const response = await apiClient.get<ScrapeJob[]>(`/hotel-groups/${groupId}/jobs`, {
+): Promise<GroupJobsResponse> {
+  const response = await apiClient.get<GroupJobsResponse>(`/hotel-groups/${groupId}/jobs`, {
     params: { limit, offset },
   });
+  return response.data;
+}
+
+// Saved per-group price-search config (ADR-012)
+export async function updateSearchConfig(
+  groupId: string,
+  config: SearchConfig
+): Promise<HotelGroup> {
+  const response = await apiClient.put<HotelGroup>(
+    `/hotel-groups/${groupId}/search-config`,
+    config
+  );
+  return response.data;
+}
+
+/** Run the saved search now. Check-in is derived server-side from the
+ * stored days-ahead offset, so the caller passes nothing. */
+export async function runSavedSearch(
+  groupId: string
+): Promise<{ jobs_queued: number; job_ids: string[] }> {
+  const response = await apiClient.post<{ jobs_queued: number; job_ids: string[] }>(
+    `/hotel-groups/${groupId}/search-runs`
+  );
   return response.data;
 }

@@ -139,6 +139,19 @@ impl ScrapeJobRepo {
         Ok(rows.iter().map(job_from_row).collect())
     }
 
+    /// Total jobs for a group, so the UI can render page numbers rather
+    /// than a bare "next" guess. Job history grows steadily — a scheduled
+    /// grid adds 5 rows per fire — so this list is genuinely paginated
+    /// server-side rather than fetched whole.
+    pub async fn count_by_group(pool: &PgPool, group_id: Uuid) -> AppResult<i64> {
+        let row = sqlx::query("SELECT COUNT(*) as total FROM scrape_jobs WHERE hotel_group_id = $1")
+            .bind(group_id)
+            .fetch_one(pool)
+            .await?;
+
+        Ok(row.get("total"))
+    }
+
     /// Update job status
     pub async fn update_status(
         pool: &PgPool,

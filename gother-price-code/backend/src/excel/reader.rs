@@ -1,6 +1,12 @@
-//! Excel Reader
+//! Spreadsheet Reader
 //!
-//! Reads hotel data from Excel files.
+//! Reads hotel data from uploaded spreadsheets — .xlsx/.xls/.ods via
+//! calamine, and .csv directly. The real 2,200-hotel master list ships as
+//! a CSV (`docs/data/hotel-list-2200.csv`), so CSV is a first-class input
+//! rather than a convenience.
+//!
+//! Both formats are normalized to the same `Vec<Vec<Data>>` shape, so all
+//! the header-matching and row-extraction logic below is format-agnostic.
 
 use calamine::{open_workbook_auto_from_rs, Data, Reader};
 use std::io::Cursor;
@@ -8,30 +14,84 @@ use std::io::Cursor;
 use crate::error::AppError;
 use crate::models::{HotelImportData, JobHotelParamOverride, MasterHotelImportRow};
 
-/// Excel file reader
-pub struct ExcelReader;
 
-impl ExcelReader {
-    /// Read hotels from Excel file bytes
-    pub fn read_hotels(data: &[u8]) -> Result<Vec<HotelImportData>, AppError> {
+/// Rows of cells from an uploaded file, whatever its format.
+///
+/// Format is detected from the leading bytes rather than the filename:
+/// xlsx/ods are ZIP archives (`PK\x03\x04`) and legacy .xls is an OLE2
+/// compound file (`\xD0\xCF\x11\xE0`). Anything else is treated as
+/// delimited text — a filename can lie or be missing, the magic bytes
+/// cannot.
+fn read_rows(data: &[u8]) -> Result<Vec<Vec<Data>>, AppError> {
+    const ZIP_MAGIC: &[u8] = b"PK\x03\x04";
+    const OLE2_MAGIC: &[u8] = &[0xD0, 0xCF, 0x11, 0xE0];
+
+    let is_spreadsheet = data.starts_with(ZIP_MAGIC) || data.starts_with(OLE2_MAGIC);
+
+    if is_spreadsheet {
         let cursor = Cursor::new(data);
         let mut workbook = open_workbook_auto_from_rs(cursor)
-            .map_err(|e| AppError::Excel(format!("Failed to open Excel file: {}", e)))?;
+            .map_err(|e| AppError::Excel(format!("Failed to open spreadsheet: {}", e)))?;
 
-        // Get the first sheet
         let sheet_names = workbook.sheet_names().to_vec();
         let sheet_name = sheet_names
             .first()
-            .ok_or_else(|| AppError::Excel("No sheets found in Excel file".to_string()))?;
+            .ok_or_else(|| AppError::Excel("No sheets found in file".to_string()))?;
 
         let range = workbook
             .worksheet_range(sheet_name)
             .map_err(|e| AppError::Excel(format!("Failed to read sheet: {}", e)))?;
 
+        return Ok(range.rows().map(|row| row.to_vec()).collect());
+    }
+
+    read_csv_rows(data)
+}
+
+/// Parse CSV into the same cell shape as a worksheet. Every field becomes
+/// a `Data::String`; the existing extractors format cells to strings and
+/// parse numbers themselves, so nothing downstream needs to care.
+fn read_csv_rows(data: &[u8]) -> Result<Vec<Vec<Data>>, AppError> {
+    // Excel writes a UTF-8 BOM on CSV export; left in place it becomes
+    // part of the first header cell and that column stops matching.
+    let data = data.strip_prefix(b"\xef\xbb\xbf").unwrap_or(data);
+
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(false) // the caller treats row 0 as the header
+        .flexible(true) // ragged rows are the norm in exported lists
+        .from_reader(data);
+
+    let mut rows = Vec::new();
+    for record in reader.records() {
+        let record =
+            record.map_err(|e| AppError::Excel(format!("Failed to read CSV: {}", e)))?;
+        rows.push(
+            record
+                .iter()
+                .map(|field| Data::String(field.trim().to_string()))
+                .collect(),
+        );
+    }
+
+    if rows.is_empty() {
+        return Err(AppError::Excel("CSV file is empty".to_string()));
+    }
+
+    Ok(rows)
+}
+
+/// Spreadsheet reader — Excel or CSV.
+pub struct ExcelReader;
+
+impl ExcelReader {
+    /// Read hotels from Excel file bytes
+    pub fn read_hotels(data: &[u8]) -> Result<Vec<HotelImportData>, AppError> {
+        let rows = read_rows(data)?;
+
         let mut hotels = Vec::new();
         let mut header_row: Option<HeaderMapping> = None;
 
-        for (row_idx, row) in range.rows().enumerate() {
+        for (row_idx, row) in rows.iter().enumerate() {
             if row_idx == 0 {
                 // Parse header row
                 header_row = Some(parse_header(row)?);
@@ -72,23 +132,12 @@ impl ExcelReader {
     /// `No` and `SEARCH` are ignored. Hyphenated hotel names are converted to
     /// spaces (the source list uses e.g. "Grand-Hyatt-Bangkok").
     pub fn read_master_hotel_list(data: &[u8]) -> Result<Vec<MasterHotelImportRow>, AppError> {
-        let cursor = Cursor::new(data);
-        let mut workbook = open_workbook_auto_from_rs(cursor)
-            .map_err(|e| AppError::Excel(format!("Failed to open Excel file: {}", e)))?;
-
-        let sheet_names = workbook.sheet_names().to_vec();
-        let sheet_name = sheet_names
-            .first()
-            .ok_or_else(|| AppError::Excel("No sheets found in Excel file".to_string()))?;
-
-        let range = workbook
-            .worksheet_range(sheet_name)
-            .map_err(|e| AppError::Excel(format!("Failed to read sheet: {}", e)))?;
+        let rows = read_rows(data)?;
 
         let mut rows_out = Vec::new();
         let mut header: Option<MasterHeaderMapping> = None;
 
-        for (row_idx, row) in range.rows().enumerate() {
+        for (row_idx, row) in rows.iter().enumerate() {
             if row_idx == 0 {
                 header = Some(parse_master_header(row)?);
                 continue;
@@ -151,23 +200,12 @@ impl ExcelReader {
     pub fn read_job_hotel_overrides(
         data: &[u8],
     ) -> Result<Vec<JobHotelParamOverride>, AppError> {
-        let cursor = Cursor::new(data);
-        let mut workbook = open_workbook_auto_from_rs(cursor)
-            .map_err(|e| AppError::Excel(format!("Failed to open Excel file: {}", e)))?;
-
-        let sheet_names = workbook.sheet_names().to_vec();
-        let sheet_name = sheet_names
-            .first()
-            .ok_or_else(|| AppError::Excel("No sheets found in Excel file".to_string()))?;
-
-        let range = workbook
-            .worksheet_range(sheet_name)
-            .map_err(|e| AppError::Excel(format!("Failed to read sheet: {}", e)))?;
+        let rows = read_rows(data)?;
 
         let mut overrides = Vec::new();
         let mut header: Option<OverrideHeaderMapping> = None;
 
-        for (row_idx, row) in range.rows().enumerate() {
+        for (row_idx, row) in rows.iter().enumerate() {
             if row_idx == 0 {
                 header = Some(parse_override_header(row)?);
                 continue;
@@ -404,5 +442,72 @@ mod tests {
         assert_eq!(mapping.slug_col, Some(4));
         assert_eq!(mapping.supplier_type_col, Some(5));
         assert_eq!(mapping.country_col, Some(6));
+    }
+}
+
+#[cfg(test)]
+mod csv_tests {
+    use super::*;
+
+    /// The real master list ships as CSV with this exact header
+    /// (docs/data/hotel-list-2200.csv), so it must import as-is.
+    const MASTER_CSV: &[u8] = b"No,HID,Hotel-Name,UPDATE URL 15 JAN,SLUG,Supplier-or-Direct,Country,SEARCH\n\
+190,1022,Asia-Airport-Donmuang-Hotel,www.gother.com/th-th/hotels/x,thailand/pathum-thani/asia-airport,DIRECT,thailand,#N/A\n\
+364,772485,Arden-Hotel-&-Residence-Pattaya,www.gother.com/th-th/hotels/y,thailand/chonburi/arden,DIRECT,thailand,#N/A\n";
+
+    #[test]
+    fn reads_the_real_master_csv() {
+        let rows = ExcelReader::read_master_hotel_list(MASTER_CSV).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].hid, 1022);
+        // Hyphenated source names are converted to spaces.
+        assert_eq!(rows[0].hotel_name, "Asia Airport Donmuang Hotel");
+        assert_eq!(rows[1].hid, 772485);
+    }
+
+    /// Excel writes a UTF-8 BOM on CSV export; left in place it becomes
+    /// part of the first header cell and that column stops matching.
+    #[test]
+    fn tolerates_a_utf8_bom() {
+        let mut with_bom = vec![0xEF, 0xBB, 0xBF];
+        with_bom.extend_from_slice(MASTER_CSV);
+        let rows = ExcelReader::read_master_hotel_list(&with_bom).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].hid, 1022, "BOM must not break the HID column");
+    }
+
+    #[test]
+    fn reads_the_plain_three_column_csv() {
+        let csv = b"hotel_name,city,country\nMandarin Oriental,Bangkok,Thailand\nRayavadee,Krabi,Thailand\n";
+        let hotels = ExcelReader::read_hotels(csv).unwrap();
+        assert_eq!(hotels.len(), 2);
+        assert_eq!(hotels[0].hotel_name, "Mandarin Oriental");
+        assert_eq!(hotels[1].city, "Krabi");
+    }
+
+    /// Quoted fields containing commas must not split — hotel names in the
+    /// real list include them.
+    #[test]
+    fn respects_quoted_fields() {
+        let csv = b"hotel_name,city,country\n\"Sofitel, Sukhumvit\",Bangkok,Thailand\n";
+        let hotels = ExcelReader::read_hotels(csv).unwrap();
+        assert_eq!(hotels[0].hotel_name, "Sofitel, Sukhumvit");
+    }
+
+    #[test]
+    fn empty_csv_is_an_error_not_a_panic() {
+        assert!(ExcelReader::read_hotels(b"").is_err());
+    }
+
+    /// A ZIP magic number must still route to calamine, not the CSV path.
+    #[test]
+    fn detects_xlsx_by_magic_bytes_not_extension() {
+        let fake_xlsx = b"PK\x03\x04not-really-a-zip";
+        let err = read_rows(fake_xlsx).unwrap_err();
+        // Reached calamine and failed there, rather than being parsed as CSV.
+        assert!(
+            format!("{err:?}").contains("spreadsheet"),
+            "should route to the spreadsheet reader, got: {err:?}"
+        );
     }
 }

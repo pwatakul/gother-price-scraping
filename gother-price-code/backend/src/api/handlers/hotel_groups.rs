@@ -8,13 +8,17 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use chrono::Utc;
+
+use crate::api::handlers::scrape_jobs::queue_window_jobs;
 use crate::api::router::AppState;
 use crate::db::{HotelGroupRepo, HotelRepo, ScrapeJobRepo};
 use crate::error::AppResult;
 use crate::excel::ExcelReader;
 use crate::models::{
-    CreateHotelGroupRequest, CreateHotelRequest, Hotel, HotelGroup, HotelGroupWithCount,
-    HotelWithPrice, ScrapeJob, UpdateHotelGroupRequest,
+    CreateHotelGroupRequest, CreateHotelRequest, CreateScrapeJobRequest, Hotel, HotelGroup,
+    HotelGroupWithCount, HotelWithPrice, ScrapeJob, UpdateGroupSearchConfigRequest,
+    UpdateHotelGroupRequest,
 };
 
 /// List all hotel groups
@@ -116,6 +120,49 @@ pub async fn update_group(
 ) -> AppResult<Json<HotelGroup>> {
     let group = HotelGroupRepo::update(&state.db, id, &req).await?;
     Ok(Json(group))
+}
+
+/// PUT /hotel-groups/:id/search-config — edit the saved price search.
+pub async fn update_search_config(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateGroupSearchConfigRequest>,
+) -> AppResult<Json<HotelGroup>> {
+    let group = HotelGroupRepo::update_search_config(&state.db, id, &req).await?;
+    Ok(Json(group))
+}
+
+/// POST /hotel-groups/:id/search-runs — run the saved search now.
+///
+/// Queues one job per configured booking window; returns how many were
+/// queued rather than a single job, since a run is now a set.
+pub async fn run_saved_search(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<serde_json::Value>> {
+    let group = HotelGroupRepo::get_by_id(&state.db, id).await?;
+
+    // One job per configured booking window, at one night each — the same
+    // shared path the scheduler uses, so a manual run and a scheduled run
+    // produce identical job shapes for the same window (ADR-012/ADR-013).
+    // force_refresh: an explicit press means "get me current prices".
+    let jobs = queue_window_jobs(
+        &state,
+        group.id,
+        group.search_method,
+        &group.search_days_ahead,
+        group.search_rooms as i32,
+        group.search_adults as i32,
+        Utc::now(),
+        true,
+    )
+    .await;
+
+    let job_ids: Vec<Uuid> = jobs.iter().map(|j| j.id).collect();
+    Ok(Json(serde_json::json!({
+        "jobs_queued": jobs.len(),
+        "job_ids": job_ids,
+    })))
 }
 
 /// Delete hotel group
@@ -249,7 +296,10 @@ pub async fn list_jobs(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     Query(query): Query<ListJobsQuery>,
-) -> AppResult<Json<Vec<ScrapeJob>>> {
+) -> AppResult<Json<serde_json::Value>> {
     let jobs = ScrapeJobRepo::list_by_group(&state.db, id, query.limit, query.offset).await?;
-    Ok(Json(jobs))
+    // `total` is the unpaginated count, so the UI can show page numbers
+    // instead of guessing whether another page exists.
+    let total = ScrapeJobRepo::count_by_group(&state.db, id).await?;
+    Ok(Json(serde_json::json!({ "jobs": jobs, "total": total })))
 }

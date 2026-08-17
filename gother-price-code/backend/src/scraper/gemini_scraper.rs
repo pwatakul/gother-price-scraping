@@ -12,7 +12,7 @@
 use async_trait::async_trait;
 use serde::Deserialize;
 
-use super::providers::{AGODA, TRIP};
+use super::providers;
 use super::{ScrapeParams, ScrapeResult, Scraper};
 use crate::ai::GeminiClient;
 
@@ -88,14 +88,17 @@ impl Scraper for GeminiScraper {
 
         let mut results = Vec::new();
         for rate in parsed.rates {
-            let normalized_provider = match rate.provider.to_lowercase().as_str() {
-                p if p.contains("agoda") => AGODA,
-                p if p.contains("trip") => TRIP,
-                _ => continue, // not a named provider — drop it
+            // Same allowlist as every other scraper (ADR-009). Deliberately
+            // does not pass hotel details, so a model naming the hotel's own
+            // site cannot be promoted to a `direct` rate on its say-so.
+            let Some(normalized_provider) =
+                providers::normalize_source(&rate.provider, "", "", "")
+            else {
+                continue; // not an allowlisted provider — drop it
             };
 
             results.push(ScrapeResult {
-                source: normalized_provider.to_string(),
+                source: normalized_provider,
                 room_type: rate.room_type,
                 price_thb: rate.price_thb,
                 original_price: Some(rate.price_thb),
@@ -104,6 +107,8 @@ impl Scraper for GeminiScraper {
                 cancellation: rate.cancellation,
                 source_url: rate.source_url,
                 who_id: None,
+                // Stamped by the registry loop from the factory name (ADR-011).
+                via_method: String::new(),
             });
         }
 

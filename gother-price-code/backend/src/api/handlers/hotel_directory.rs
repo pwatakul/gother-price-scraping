@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::api::router::AppState;
 use crate::db::{HotelDirectoryRepo, HotelRepo, PriceHistoryRepo};
 use crate::error::{AppError, AppResult};
-use crate::models::{HotelDetail, HotelListQuery, HotelListResponse};
+use crate::models::{Hotel, HotelDetail, HotelListQuery, HotelListResponse, UpdateHotelRequest};
 
 /// GET /hotels — paginated, filtered, cross-group hotel listing
 pub async fn list_hotels(
@@ -51,7 +51,12 @@ pub async fn get_hotel_detail(
         .await
         .map_err(|_| AppError::NotFound(format!("Hotel {} not found", id)))?;
     let group_names = HotelDirectoryRepo::group_names_for_hotel(&state.db, id).await?;
-    let trend = PriceHistoryRepo::trend_for_hotel(&state.db, id, None, 90).await?;
+    // Default to the window with the most data so the detail page opens on
+    // a like-for-like comparison rather than a mixed average (ADR-013).
+    let windows = PriceHistoryRepo::trend_windows_for_hotel(&state.db, id).await?;
+    let default_window = windows.first().map(|w| w.days_in_advance);
+    let trend =
+        PriceHistoryRepo::trend_for_hotel(&state.db, id, None, 90, default_window).await?;
 
     Ok(Json(HotelDetail { hotel, group_names, trend }))
 }
@@ -85,4 +90,18 @@ pub async fn export_hotels(
         .header(header::CONTENT_DISPOSITION, "attachment; filename=\"hotels.csv\"")
         .body(Body::from(csv))
         .unwrap())
+}
+
+/// PUT /hotels/:id — edit a hotel's name, city or country.
+///
+/// Renaming changes what the scraper searches for (the SerpAPI query is
+/// built from name + city + country), so a vague name will quietly stop
+/// matching. `normalized_name` is recomputed by the repo.
+pub async fn update_hotel(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateHotelRequest>,
+) -> AppResult<Json<Hotel>> {
+    let hotel = HotelRepo::update(&state.db, id, &req).await?;
+    Ok(Json(hotel))
 }

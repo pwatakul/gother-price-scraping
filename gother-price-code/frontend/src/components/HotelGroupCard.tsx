@@ -14,10 +14,10 @@ export function HotelGroupCard({ group, onDelete }: HotelGroupCardProps) {
 
   return (
     <div
-      className="bg-white border border-slate-200 rounded-[10px] p-[18px_20px] flex items-center gap-3.5 cursor-pointer transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] hover:border-sky-300"
+      className="bg-white border border-slate-200 rounded-[10px] p-[18px_20px] flex items-center gap-3.5 cursor-pointer transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] hover:border-brand-300"
       onClick={() => navigate(`/groups/${group.id}`)}
     >
-      <div className="h-[42px] w-[42px] shrink-0 rounded-[10px] bg-sky-50 flex items-center justify-center text-xl">
+      <div className="h-[42px] w-[42px] shrink-0 rounded-[10px] bg-brand-50 flex items-center justify-center text-xl">
         🏨
       </div>
 
@@ -25,7 +25,7 @@ export function HotelGroupCard({ group, onDelete }: HotelGroupCardProps) {
         <Link
           to={`/groups/${group.id}`}
           onClick={(e) => e.stopPropagation()}
-          className="text-sm font-semibold text-slate-900 hover:text-sky-600 transition-colors"
+          className="text-sm font-semibold text-slate-900 hover:text-brand-600 transition-colors"
         >
           {group.name}
         </Link>

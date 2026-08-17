@@ -8,8 +8,8 @@ use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-const COLUMNS: &str = "id, hotel_group_id, name, cron_expression, lookahead_days, los_variants, \
-    method, rooms, adults, is_active, last_run_at, next_run_at, created_at, updated_at";
+const COLUMNS: &str = "id, hotel_group_id, name, cron_expression, is_active, \
+    last_run_at, next_run_at, created_at, updated_at";
 
 fn from_row(row: &sqlx::postgres::PgRow) -> ScheduledScrapeConfig {
     ScheduledScrapeConfig {
@@ -17,11 +17,6 @@ fn from_row(row: &sqlx::postgres::PgRow) -> ScheduledScrapeConfig {
         hotel_group_id: row.get("hotel_group_id"),
         name: row.get("name"),
         cron_expression: row.get("cron_expression"),
-        lookahead_days: row.get("lookahead_days"),
-        los_variants: row.get("los_variants"),
-        method: row.get("method"),
-        rooms: row.get("rooms"),
-        adults: row.get("adults"),
         is_active: row.get("is_active"),
         last_run_at: row.get("last_run_at"),
         next_run_at: row.get("next_run_at"),
@@ -40,19 +35,14 @@ impl ScheduledScrapeConfigRepo {
         let row = sqlx::query(&format!(
             r#"
             INSERT INTO scheduled_scrape_configs
-                (hotel_group_id, name, cron_expression, lookahead_days, los_variants, method, rooms, adults, is_active)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                (hotel_group_id, name, cron_expression, is_active)
+            VALUES ($1, $2, $3, $4)
             RETURNING {COLUMNS}
             "#
         ))
         .bind(req.hotel_group_id)
         .bind(&req.name)
         .bind(&req.cron_expression)
-        .bind(&req.lookahead_days)
-        .bind(&req.los_variants)
-        .bind(req.method)
-        .bind(req.rooms)
-        .bind(req.adults)
         .bind(req.is_active)
         .fetch_one(pool)
         .await?;
@@ -103,8 +93,7 @@ impl ScheduledScrapeConfigRepo {
         let row = sqlx::query(&format!(
             r#"
             UPDATE scheduled_scrape_configs
-            SET name = $2, cron_expression = $3, lookahead_days = $4, los_variants = $5,
-                method = $6, rooms = $7, adults = $8, is_active = $9
+            SET name = $2, cron_expression = $3, is_active = $4
             WHERE id = $1
             RETURNING {COLUMNS}
             "#
@@ -112,11 +101,6 @@ impl ScheduledScrapeConfigRepo {
         .bind(id)
         .bind(req.name.clone().or(existing.name))
         .bind(req.cron_expression.clone().unwrap_or(existing.cron_expression))
-        .bind(req.lookahead_days.clone().unwrap_or(existing.lookahead_days))
-        .bind(req.los_variants.clone().unwrap_or(existing.los_variants))
-        .bind(req.method.unwrap_or(existing.method))
-        .bind(req.rooms.unwrap_or(existing.rooms))
-        .bind(req.adults.unwrap_or(existing.adults))
         .bind(req.is_active.unwrap_or(existing.is_active))
         .fetch_one(pool)
         .await?;

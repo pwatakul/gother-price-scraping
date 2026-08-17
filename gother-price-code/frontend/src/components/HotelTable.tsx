@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Trash2 } from 'lucide-react';
 import {
   Table,
@@ -43,7 +44,11 @@ export function HotelTable({ hotels, onRemove, isRemoving }: HotelTableProps) {
       <TableBody>
         {hotels.map((hotel) => (
           <TableRow key={hotel.id}>
-            <TableCell className="font-medium">{hotel.name}</TableCell>
+            <TableCell className="font-medium">
+              <Link to={`/hotels/${hotel.id}`} className="hover:text-brand-600">
+                {hotel.name}
+              </Link>
+            </TableCell>
             <TableCell>{hotel.city}</TableCell>
             <TableCell>{hotel.country}</TableCell>
             <TableCell className="text-right">

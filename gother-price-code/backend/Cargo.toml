@@ -32,6 +32,7 @@ reqwest = { version = "0.12", features = ["json"] }
 
 # Excel handling
 calamine = "0.24"  # Reading Excel
+csv = "1"          # Reading CSV imports (the real hotel list ships as CSV)
 rust_xlsxwriter = "0.64"  # Writing Excel
 
 # UUID
@@ -63,6 +64,12 @@ rand = "0.8"
 
 # Cron expression parsing (scheduled scraping)
 cron = "0.12"
+
+# Authentication (REQ-009) — Argon2id password hashing + signed session JWTs
+argon2 = "0.5"
+jsonwebtoken = "9"
+axum-extra = { version = "0.9", features = ["cookie"] }
+time = "0.3"  # cookie Max-Age (the type axum-extra's cookie builder takes)
 
 [dev-dependencies]
 # Testing

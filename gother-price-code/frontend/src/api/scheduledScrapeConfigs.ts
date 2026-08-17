@@ -35,3 +35,12 @@ export async function updateScheduledScrapeConfig(
 export async function deleteScheduledScrapeConfig(id: string): Promise<void> {
   await apiClient.delete(`/scheduled-scrape-configs/${id}`);
 }
+
+/** Fire the standard grid immediately (REQ-008 F-010). Additive to the
+ * schedule — does not move the next cron run. */
+export async function runScheduledScrapeConfig(id: string): Promise<{ jobs_queued: number }> {
+  const response = await apiClient.post<{ jobs_queued: number }>(
+    `/scheduled-scrape-configs/${id}/run`
+  );
+  return response.data;
+}

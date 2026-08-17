@@ -3,7 +3,7 @@
 // ===========================================
 
 import apiClient from './client';
-import type { HotelDetail, HotelListResponse } from '@/types';
+import type { Hotel, HotelDetail, HotelListResponse } from '@/types';
 
 export interface HotelListFilters {
   country?: string;
@@ -30,5 +30,16 @@ export async function listCountries(): Promise<string[]> {
 
 export async function listCities(country?: string): Promise<string[]> {
   const response = await apiClient.get<string[]>('/hotels/cities', { params: { country } });
+  return response.data;
+}
+
+/** Edit a hotel's name, city or country. The backend recomputes the
+ * normalized name used for matching, and rejects an edit that would
+ * collide with another hotel in the same city. */
+export async function updateHotel(
+  id: string,
+  data: { name?: string; city?: string; country?: string }
+): Promise<Hotel> {
+  const response = await apiClient.put<Hotel>(`/hotels/${id}`, data);
   return response.data;
 }

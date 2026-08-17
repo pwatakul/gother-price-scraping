@@ -7,6 +7,12 @@ export interface HotelGroup {
   id: string;
   name: string;
   description: string | null;
+  /** Saved price-search config (ADR-012). `search_days_ahead` is an
+   * offset from the run date, not a calendar date. */
+  search_method: ScrapeMethod;
+  search_days_ahead: number[];
+  search_rooms: number;
+  search_adults: number;
   created_at: string;
   updated_at: string;
 }
@@ -63,7 +69,7 @@ export interface CreateHotelRequest {
 
 // Scrape Job Types
 export type ScrapeJobStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
-export type ScrapeMethod = 'serpapi' | 'chatgpt' | 'gemini' | 'both';
+export type ScrapeMethod = 'serpapi' | 'gemini' | 'both';
 export type Device = 'desktop' | 'mobile_web';
 export type LoginState = 'public' | 'member';
 
@@ -82,6 +88,12 @@ export interface ScrapeJob {
   login_state: LoginState;
   created_at: string;
   completed_at: string | null;
+}
+
+/** Paginated scrape-job history for one group. */
+export interface GroupJobsResponse {
+  jobs: ScrapeJob[];
+  total: number;
 }
 
 export interface ScrapeProgress {
@@ -210,20 +222,31 @@ export interface MarketOverview {
 export interface MarketPositionEntry {
   hotel_id: string;
   hotel_name: string;
+  /** The stay every provider on this row was compared on (ADR-013). */
+  checkin_date: string;
   gother_price: number | null;
   best_price: number | null;
   best_source: string | null;
   gap_thb: number | null;
   gap_pct: number | null;
   is_winning: boolean;
+  /** Cheapest provider for this stay — populated today, unlike the
+   * Gother columns above. */
+  cheapest_source: string | null;
+  cheapest_price: number | null;
+  provider_count: number;
+  spread_pct: number | null;
 }
 
 export interface HeatmapCell {
   hotel_id: string;
   hotel_name: string;
   source: string;
+  checkin_date: string;
   price_thb: number | null;
   gap_pct: number | null;
+  /** Cheapest provider for this hotel's stay — the winner highlight. */
+  is_cheapest: boolean;
 }
 
 export interface WinRateRow {
@@ -235,9 +258,30 @@ export interface WinRateRow {
 
 export interface BookingWindowRow {
   source: string;
+  device: Device;
   days_in_advance: number;
   avg_price_thb: number;
   min_price_thb: number;
+  sample_count: number;
+}
+
+/** One provider's standing versus the cheapest quote per hotel.
+ * `median_premium_pct` is a median, not a mean — a single bad scrape
+ * (a five-star resort returned at THB 52) makes an average meaningless. */
+export interface ProviderBenchmarkRow {
+  source: string;
+  /** Stay-level comparisons (hotel + check-in date) this provider took
+   * part in, so thin coverage is visible beside a high win rate. */
+  quotes_compared: number;
+  hotels_covered: number;
+  times_cheapest: number;
+  cheapest_pct: number;
+  median_premium_pct: number;
+}
+
+/** A booking window with data, for the trend chart's selector. */
+export interface TrendWindow {
+  days_in_advance: number;
   sample_count: number;
 }
 
@@ -252,6 +296,9 @@ export interface ParityViolationRow {
 export interface PriceTrendPoint {
   source: string;
   day: string;
+  /** Days between the scrape and check-in — the booking window this
+   * point belongs to (ADR-013). */
+  days_in_advance: number;
   avg_price_thb: number;
   min_price_thb: number;
   max_price_thb: number;
@@ -275,6 +322,10 @@ export interface HotelPriceHistoryRow {
   checkout_date: string;
   rooms: number;
   adults: number;
+  device: Device;
+  /** Which scraper produced this row — 'serpapi' is a real scrape,
+   * 'gemini' is an AI estimate used only where scraping found nothing. */
+  via_method: string;
   scrape_job_id: string | null;
   scraped_at: string;
 }
@@ -300,16 +351,13 @@ export interface HotelGroupDetailResponse {
 }
 
 // Scheduled Scrape Config Types (REQ-002 F-003/F-004)
+// A schedule configures only *when* and *how* to scrape — the booking
+// windows, devices and stay params are fixed system constants (ADR-006).
 export interface ScheduledScrapeConfig {
   id: string;
   hotel_group_id: string;
   name: string | null;
   cron_expression: string;
-  lookahead_days: number[];
-  los_variants: number[];
-  method: ScrapeMethod;
-  rooms: number;
-  adults: number;
   is_active: boolean;
   last_run_at: string | null;
   next_run_at: string | null;
@@ -321,10 +369,5 @@ export interface CreateScheduledScrapeConfigRequest {
   hotel_group_id: string;
   name?: string;
   cron_expression: string;
-  lookahead_days: number[];
-  los_variants?: number[];
-  method?: ScrapeMethod;
-  rooms?: number;
-  adults?: number;
   is_active?: boolean;
 }

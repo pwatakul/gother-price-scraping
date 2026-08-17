@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -11,6 +11,10 @@ import {
   History,
   Clock,
   Trash2,
+  Pause,
+  PlayCircle,
+  Settings,
+  BarChart3,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -34,7 +38,11 @@ import {
 } from '@/components/ui/Dialog';
 import { HotelTable } from '@/components/HotelTable';
 import { ExcelUploader } from '@/components/ExcelUploader';
-import { ScrapeJobForm, ScrapeJobFormData } from '@/components/ScrapeJobForm';
+import {
+  SearchConfigForm,
+  describeSearchConfig,
+  type SearchConfig,
+} from '@/components/SearchConfigForm';
 import { ProgressTracker } from '@/components/ProgressTracker';
 import {
   getHotelGroup,
@@ -43,27 +51,33 @@ import {
   importHotels,
   importMasterHotels,
   listGroupJobs,
+  updateSearchConfig,
+  runSavedSearch,
 } from '@/api/hotelGroups';
-import { createScrapeJob, getScrapeResults, cancelScrapeJob, downloadBlob } from '@/api/scrapeJobs';
+import { getScrapeResults, cancelScrapeJob, downloadBlob } from '@/api/scrapeJobs';
 import {
   listScheduledScrapeConfigs,
   createScheduledScrapeConfig,
   deleteScheduledScrapeConfig,
+  updateScheduledScrapeConfig,
+  runScheduledScrapeConfig,
 } from '@/api/scheduledScrapeConfigs';
 import apiClient from '@/api/client';
+import { Pagination } from '@/components/Pagination';
 import { Badge } from '@/components/ui/Badge';
 import { formatDate, formatRelativeTime, getStatusColor } from '@/utils/format';
-import type { ScrapeJob, ScrapeMethod } from '@/types';
+import type { ScrapeJob } from '@/types';
 
 export function HotelGroupDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
   const [isAddHotelOpen, setIsAddHotelOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [importFormat, setImportFormat] = useState<'plain' | 'master'>('plain');
-  const [isScrapeFormOpen, setIsScrapeFormOpen] = useState(false);
+  const [isSearchConfigOpen, setIsSearchConfigOpen] = useState(false);
   const [isProgressOpen, setIsProgressOpen] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
@@ -75,8 +89,6 @@ export function HotelGroupDetail() {
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [scheduleName, setScheduleName] = useState('');
   const [scheduleCron, setScheduleCron] = useState('0 6 * * 1');
-  const [scheduleLookahead, setScheduleLookahead] = useState('7,30');
-  const [scheduleMethod, setScheduleMethod] = useState<ScrapeMethod>('serpapi');
 
   // Fetch hotel group details
   const { data, isLoading, error } = useQuery({
@@ -85,12 +97,27 @@ export function HotelGroupDetail() {
     enabled: !!id,
   });
 
-  // Fetch past jobs
-  const { data: jobs } = useQuery({
-    queryKey: ['groupJobs', id],
-    queryFn: () => listGroupJobs(id!, 10),
+  // Fetch past jobs — paginated server-side; page lives in the URL so it
+  // survives a reload or a shared link, matching the hotels table.
+  const jobPage = Number(searchParams.get('jobPage') ?? '0');
+  const jobPageSize = Number(searchParams.get('jobPageSize') ?? '10');
+  const { data: jobsPage } = useQuery({
+    queryKey: ['groupJobs', id, jobPage, jobPageSize],
+    queryFn: () => listGroupJobs(id!, jobPageSize, jobPage * jobPageSize),
     enabled: !!id,
   });
+  const jobs = jobsPage?.jobs;
+  const jobTotal = jobsPage?.total ?? 0;
+  const jobTotalPages = Math.ceil(jobTotal / jobPageSize);
+  // Clamp: jobs are only added, but page size can change under a deep link.
+  const safeJobPage = Math.min(jobPage, Math.max(jobTotalPages - 1, 0));
+
+  const updateJobPageParams = (updates: Record<string, number>, resetPage = true) => {
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(updates)) next.set(key, String(value));
+    if (resetPage) next.delete('jobPage');
+    setSearchParams(next);
+  };
 
   // Fetch scheduled scrape configs (REQ-002 F-003/F-004)
   const { data: schedules } = useQuery({
@@ -98,6 +125,37 @@ export function HotelGroupDetail() {
     queryFn: () => listScheduledScrapeConfigs(id!),
     enabled: !!id,
   });
+
+  // The whole group arrives in one payload, so the hotels table paginates
+  // client-side. Page lives in the URL so it survives a reload or a shared
+  // link, matching HotelsList / HotelDetail.
+  const hotelPage = Number(searchParams.get('hotelPage') ?? '0');
+  const hotelPageSize = Number(searchParams.get('hotelPageSize') ?? '25');
+  const allHotels = data?.hotels ?? [];
+  const hotelTotalPages = Math.ceil(allHotels.length / hotelPageSize);
+  // Clamp: removing hotels can leave the URL pointing past the last page.
+  const safeHotelPage = Math.min(hotelPage, Math.max(hotelTotalPages - 1, 0));
+  const pagedHotels = useMemo(
+    () => allHotels.slice(safeHotelPage * hotelPageSize, (safeHotelPage + 1) * hotelPageSize),
+    [allHotels, safeHotelPage, hotelPageSize]
+  );
+
+  // The group's saved search settings, shown in the summary line and used
+  // to seed the settings dialog. Defaults mirror the DB defaults so the
+  // dialog renders sensibly during the first load.
+  const searchConfig: SearchConfig = {
+    search_method: data?.group.search_method ?? 'serpapi',
+    search_days_ahead: data?.group.search_days_ahead ?? [7],
+    search_rooms: data?.group.search_rooms ?? 1,
+    search_adults: data?.group.search_adults ?? 2,
+  };
+
+  const updateHotelPageParams = (updates: Record<string, number>, resetPage = true) => {
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(updates)) next.set(key, String(value));
+    if (resetPage) next.delete('hotelPage');
+    setSearchParams(next);
+  };
 
   // Poll the active job's full results (not just the aggregate progress
   // endpoint) so the progress dialog can show a per-hotel status log.
@@ -157,19 +215,30 @@ export function HotelGroupDetail() {
         hotel_group_id: id!,
         name: scheduleName || undefined,
         cron_expression: scheduleCron,
-        lookahead_days: scheduleLookahead
-          .split(',')
-          .map((s) => parseInt(s.trim(), 10))
-          .filter((n) => !isNaN(n)),
-        method: scheduleMethod,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduledScrapeConfigs', id] });
       setIsScheduleOpen(false);
       setScheduleName('');
       setScheduleCron('0 6 * * 1');
-      setScheduleLookahead('7,30');
-      setScheduleMethod('serpapi');
+    },
+  });
+
+  // Fire the standard grid now, without moving the next cron run
+  const runScheduleMutation = useMutation({
+    mutationFn: (configId: string) => runScheduledScrapeConfig(configId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduledScrapeConfigs', id] });
+      queryClient.invalidateQueries({ queryKey: ['groupJobs', id] });
+    },
+  });
+
+  // Pause / resume without deleting the schedule
+  const toggleScheduleMutation = useMutation({
+    mutationFn: ({ configId, isActive }: { configId: string; isActive: boolean }) =>
+      updateScheduledScrapeConfig(configId, { is_active: isActive }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduledScrapeConfigs', id] });
     },
   });
 
@@ -181,17 +250,27 @@ export function HotelGroupDetail() {
     },
   });
 
-  // Create scrape job mutation
-  const createJobMutation = useMutation({
-    mutationFn: (data: ScrapeJobFormData) =>
-      createScrapeJob({
-        hotel_group_id: id!,
-        ...data,
-      }),
-    onSuccess: (job) => {
-      setIsScrapeFormOpen(false);
-      setActiveJobId(job.id);
-      setIsProgressOpen(true);
+  // Save the group's price-search settings (ADR-012)
+  const saveSearchConfigMutation = useMutation({
+    mutationFn: (config: SearchConfig) => updateSearchConfig(id!, config),
+    onSuccess: () => {
+      setIsSearchConfigOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['hotelGroup', id] });
+    },
+  });
+
+  // Run the saved search now — check-in is derived server-side from the
+  // stored days-ahead offset, so nothing is passed here.
+  const runSearchMutation = useMutation({
+    mutationFn: () => runSavedSearch(id!),
+    onSuccess: (result) => {
+      // The progress dialog tracks a single job, so only open it when the
+      // run *was* a single job. A multi-window run is better read from the
+      // jobs table than through one window's progress.
+      if (result.job_ids.length === 1) {
+        setActiveJobId(result.job_ids[0]);
+        setIsProgressOpen(true);
+      }
       queryClient.invalidateQueries({ queryKey: ['groupJobs', id] });
     },
   });
@@ -273,10 +352,29 @@ export function HotelGroupDetail() {
             {group.description && ` · ${group.description}`}
           </p>
         </div>
-        <Button onClick={() => setIsScrapeFormOpen(true)} disabled={hotels.length === 0}>
-          <Play className="h-4 w-4 mr-2" />
-          New Price Search
-        </Button>
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" asChild>
+              <Link to={`/groups/${id}/analytics`}>
+                <BarChart3 className="h-4 w-4 mr-2" />
+                View Analytics
+              </Link>
+            </Button>
+            <Button variant="outline" onClick={() => setIsSearchConfigOpen(true)}>
+              <Settings className="h-4 w-4 mr-2" />
+              Search Settings
+            </Button>
+            <Button
+              onClick={() => runSearchMutation.mutate()}
+              disabled={hotels.length === 0 || runSearchMutation.isPending}
+            >
+              <Play className="h-4 w-4 mr-2" />
+              {runSearchMutation.isPending ? 'Starting...' : 'Run Price Search'}
+            </Button>
+          </div>
+          {/* What a run will actually do, without opening the dialog. */}
+          <p className="text-xs text-muted-foreground">{describeSearchConfig(searchConfig)}</p>
+        </div>
       </div>
 
       {/* Actions */}
@@ -311,10 +409,22 @@ export function HotelGroupDetail() {
           <h2 className="text-sm font-bold">Hotels ({hotels.length})</h2>
         </div>
         <HotelTable
-          hotels={hotels}
+          hotels={pagedHotels}
           onRemove={(hotelId) => removeHotelMutation.mutate(hotelId)}
           isRemoving={removeHotelMutation.isPending}
         />
+        {hotels.length > 0 && (
+          <div className="px-5 pb-4">
+            <Pagination
+              page={safeHotelPage}
+              totalPages={hotelTotalPages}
+              totalItems={hotels.length}
+              pageSize={hotelPageSize}
+              onPageChange={(p) => updateHotelPageParams({ hotelPage: p }, false)}
+              onPageSizeChange={(size) => updateHotelPageParams({ hotelPageSize: size })}
+            />
+          </div>
+        )}
       </Card>
 
       {/* Scheduled Scrapes card */}
@@ -337,6 +447,7 @@ export function HotelGroupDetail() {
                 <TableHead>Cron</TableHead>
                 <TableHead>Method</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Last run</TableHead>
                 <TableHead>Next run</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -349,12 +460,15 @@ export function HotelGroupDetail() {
                     {sched.cron_expression}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="info">{sched.method}</Badge>
+                    <Badge variant="info">{searchConfig.search_method}</Badge>
                   </TableCell>
                   <TableCell>
                     <Badge className={sched.is_active ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}>
                       {sched.is_active ? 'Active' : 'Paused'}
                     </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {sched.last_run_at ? formatRelativeTime(sched.last_run_at) : 'Never'}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {sched.next_run_at ? formatRelativeTime(sched.next_run_at) : '—'}
@@ -363,6 +477,34 @@ export function HotelGroupDetail() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      title="Run the standard grid now (does not change the next scheduled run)"
+                      onClick={() => runScheduleMutation.mutate(sched.id)}
+                      disabled={runScheduleMutation.isPending}
+                    >
+                      <Play className="h-3.5 w-3.5 text-green-600" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title={sched.is_active ? 'Pause this schedule' : 'Resume this schedule'}
+                      onClick={() =>
+                        toggleScheduleMutation.mutate({
+                          configId: sched.id,
+                          isActive: !sched.is_active,
+                        })
+                      }
+                      disabled={toggleScheduleMutation.isPending}
+                    >
+                      {sched.is_active ? (
+                        <Pause className="h-3.5 w-3.5 text-amber-600" />
+                      ) : (
+                        <PlayCircle className="h-3.5 w-3.5 text-slate-500" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="Delete this schedule"
                       onClick={() => deleteScheduleMutation.mutate(sched.id)}
                       disabled={deleteScheduleMutation.isPending}
                     >
@@ -431,6 +573,19 @@ export function HotelGroupDetail() {
             No past reports yet. Run a price scrape to create one.
           </div>
         )}
+        {jobTotal > 0 && (
+          <div className="px-5 pb-4">
+            <Pagination
+              page={safeJobPage}
+              totalPages={jobTotalPages}
+              totalItems={jobTotal}
+              pageSize={jobPageSize}
+              onPageChange={(p) => updateJobPageParams({ jobPage: p }, false)}
+              onPageSizeChange={(size) => updateJobPageParams({ jobPageSize: size })}
+              pageSizeOptions={[10, 25, 50]}
+            />
+          </div>
+        )}
       </Card>
 
       {/* Add Hotel Dialog */}
@@ -492,12 +647,12 @@ export function HotelGroupDetail() {
 
       {/* Import Dialog */}
       <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
-        <DialogContent>
-          <form onSubmit={handleImport}>
+        <DialogContent className="sm:max-w-lg">
+          <form onSubmit={handleImport} className="min-w-0">
             <DialogHeader>
               <DialogTitle>Import Hotels</DialogTitle>
               <DialogDescription>
-                Upload an Excel file to import multiple hotels
+                Upload an Excel or CSV file to import multiple hotels
               </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
@@ -587,30 +742,33 @@ export function HotelGroupDetail() {
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="schedule-lookahead">Lookahead days</Label>
-                <Input
-                  id="schedule-lookahead"
-                  value={scheduleLookahead}
-                  onChange={(e) => setScheduleLookahead(e.target.value)}
-                  placeholder="7,30"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Comma-separated days ahead of the run date to check in (e.g. 7,30).
-                </p>
+                <Label>What each run collects</Label>
+                <div className="rounded-md border border-input bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground space-y-1">
+                  <p>
+                    <span className="font-medium text-foreground">Booking windows:</span> +1, +3,
+                    +7, +14, +30 days ahead
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Devices:</span> desktop and mobile
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Stay:</span> 1 night, 1 room, 2
+                    adults
+                  </p>
+                  <p className="pt-1">
+                    Fixed standard — 10 price searches per run, so every hotel stays comparable.
+                  </p>
+                </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="schedule-method">Method</Label>
-                <select
-                  id="schedule-method"
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={scheduleMethod}
-                  onChange={(e) => setScheduleMethod(e.target.value as ScrapeMethod)}
-                >
-                  <option value="serpapi">SerpAPI</option>
-                  <option value="chatgpt">ChatGPT</option>
-                  <option value="gemini">Gemini</option>
-                  <option value="both">Both</option>
-                </select>
+                <Label>Method</Label>
+                <p className="text-xs text-muted-foreground">
+                  Uses this group's configured method (
+                  <span className="font-medium text-foreground">
+                    {describeSearchConfig(searchConfig).split(' · ')[0]}
+                  </span>
+                  ). Change it in Search Settings so manual and scheduled runs stay in step.
+                </p>
               </div>
             </div>
             <DialogFooter>
@@ -625,12 +783,14 @@ export function HotelGroupDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Scrape Job Form */}
-      <ScrapeJobForm
-        open={isScrapeFormOpen}
-        onOpenChange={setIsScrapeFormOpen}
-        onSubmit={(data) => createJobMutation.mutate(data)}
-        isLoading={createJobMutation.isPending}
+      {/* Saved price-search settings */}
+      <SearchConfigForm
+        open={isSearchConfigOpen}
+        onOpenChange={setIsSearchConfigOpen}
+        config={searchConfig}
+        onSubmit={(config) => saveSearchConfigMutation.mutate(config)}
+        isLoading={saveSearchConfigMutation.isPending}
+        hotelCount={hotels.length}
       />
 
       {/* Progress Tracker */}

@@ -140,6 +140,8 @@ impl Scraper for GotherScraper {
                         .unwrap_or_default()
                 )),
                 who_id: room.who_id.clone(),
+                // Stamped by the registry loop from the factory name (ADR-011).
+                via_method: String::new(),
             });
         }
 

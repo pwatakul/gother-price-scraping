@@ -19,6 +19,9 @@ pub enum AppError {
     #[error("Validation error: {0}")]
     Validation(String),
 
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
+
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
 
@@ -60,6 +63,7 @@ impl IntoResponse for AppError {
         let (status, code, message) = match &self {
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, "NOT_FOUND", msg.clone()),
             AppError::Validation(msg) => (StatusCode::BAD_REQUEST, "VALIDATION_ERROR", msg.clone()),
+            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", msg.clone()),
             AppError::Database(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "DATABASE_ERROR",

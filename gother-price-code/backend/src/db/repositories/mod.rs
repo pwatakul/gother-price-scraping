@@ -11,6 +11,7 @@ pub mod price_history_repo;
 pub mod scheduled_scrape_config_repo;
 pub mod scrape_job_repo;
 pub mod scrape_result_repo;
+pub mod user_repo;
 
 pub use currency_repo::*;
 pub use hotel_directory_repo::*;
@@ -21,3 +22,4 @@ pub use price_history_repo::*;
 pub use scheduled_scrape_config_repo::*;
 pub use scrape_job_repo::*;
 pub use scrape_result_repo::*;
+pub use user_repo::*;

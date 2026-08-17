@@ -151,7 +151,7 @@ export function HotelsList() {
               {data.hotels.map((h) => (
                 <TableRow key={h.id}>
                   <TableCell className="font-medium">
-                    <Link to={`/hotels/${h.id}`} className="hover:text-sky-600">
+                    <Link to={`/hotels/${h.id}`} className="hover:text-brand-600">
                       {h.name}
                     </Link>
                     {h.hid && <div className="text-xs text-muted-foreground">HID {h.hid}</div>}

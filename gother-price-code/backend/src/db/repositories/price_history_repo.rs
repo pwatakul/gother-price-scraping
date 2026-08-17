@@ -6,7 +6,9 @@
 //! after a real production bug in Part A — do not drop these casts).
 
 use crate::error::AppResult;
-use crate::models::{HotelPriceHistory, PriceHistoryQuery, PriceTrendPoint};
+use crate::models::scrape_job::Device;
+use crate::models::{
+    TrendWindow,HotelPriceHistory, PriceHistoryQuery, PriceTrendPoint};
 use chrono::{Datelike, Months, NaiveDate, Utc};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -63,6 +65,8 @@ impl PriceHistoryRepo {
         checkout_date: NaiveDate,
         rooms: i16,
         adults: i16,
+        device: Device,
+        via_method: &str,
         scrape_job_id: Option<Uuid>,
     ) -> AppResult<HotelPriceHistory> {
         let row = sqlx::query(
@@ -70,12 +74,12 @@ impl PriceHistoryRepo {
             INSERT INTO hotel_price_history
                 (hotel_id, source, room_type, price_thb, original_price, currency,
                  exchange_rate_id, meal_plan, cancellation, source_url,
-                 checkin_date, checkout_date, rooms, adults, scrape_job_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                 checkin_date, checkout_date, rooms, adults, device, via_method, scrape_job_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             RETURNING id, hotel_id, source, room_type, price_thb::float8 as price_thb,
                       original_price::float8 as original_price, currency, exchange_rate_id,
                       meal_plan, cancellation, source_url, checkin_date, checkout_date,
-                      rooms, adults, scrape_job_id, scraped_at
+                      rooms, adults, device, via_method, scrape_job_id, scraped_at
             "#,
         )
         .bind(hotel_id)
@@ -92,6 +96,8 @@ impl PriceHistoryRepo {
         .bind(checkout_date)
         .bind(rooms)
         .bind(adults)
+        .bind(device)
+        .bind(via_method)
         .bind(scrape_job_id)
         .fetch_one(pool)
         .await?;
@@ -112,6 +118,8 @@ impl PriceHistoryRepo {
             checkout_date: row.get("checkout_date"),
             rooms: row.get("rooms"),
             adults: row.get("adults"),
+            device: row.get("device"),
+            via_method: row.get("via_method"),
             scrape_job_id: row.get("scrape_job_id"),
             scraped_at: row.get("scraped_at"),
         })
@@ -124,7 +132,7 @@ impl PriceHistoryRepo {
             SELECT id, hotel_id, source, room_type, price_thb::float8 as price_thb,
                    original_price::float8 as original_price, currency, exchange_rate_id,
                    meal_plan, cancellation, source_url, checkin_date, checkout_date,
-                   rooms, adults, scrape_job_id, scraped_at
+                   rooms, adults, device, via_method, scrape_job_id, scraped_at
             FROM hotel_price_history
             WHERE ($1::uuid IS NULL OR hotel_id = $1)
               AND ($2::text IS NULL OR source = $2)
@@ -135,8 +143,9 @@ impl PriceHistoryRepo {
               AND ($7::uuid IS NULL OR hotel_id IN (
                   SELECT hotel_id FROM hotel_group_members WHERE hotel_group_id = $7
               ))
+              AND ($8::device_type IS NULL OR device = $8)
             ORDER BY scraped_at DESC
-            LIMIT $8 OFFSET $9
+            LIMIT $9 OFFSET $10
             "#,
         )
         .bind(filters.hotel_id)
@@ -146,6 +155,7 @@ impl PriceHistoryRepo {
         .bind(filters.scraped_from)
         .bind(filters.scraped_to)
         .bind(filters.hotel_group_id)
+        .bind(filters.device)
         .bind(filters.limit)
         .bind(filters.offset)
         .fetch_all(pool)
@@ -169,6 +179,8 @@ impl PriceHistoryRepo {
                 checkout_date: row.get("checkout_date"),
                 rooms: row.get("rooms"),
                 adults: row.get("adults"),
+                device: row.get("device"),
+                via_method: row.get("via_method"),
                 scrape_job_id: row.get("scrape_job_id"),
                 scraped_at: row.get("scraped_at"),
             })
@@ -192,6 +204,7 @@ impl PriceHistoryRepo {
               AND ($7::uuid IS NULL OR hotel_id IN (
                   SELECT hotel_id FROM hotel_group_members WHERE hotel_group_id = $7
               ))
+              AND ($8::device_type IS NULL OR device = $8)
             "#,
         )
         .bind(filters.hotel_id)
@@ -201,35 +214,72 @@ impl PriceHistoryRepo {
         .bind(filters.scraped_from)
         .bind(filters.scraped_to)
         .bind(filters.hotel_group_id)
+        .bind(filters.device)
         .fetch_one(pool)
         .await?;
 
         Ok(row.get("total"))
     }
 
+    /// Booking windows that actually have data for this hotel, most
+    /// samples first. Drives the chart's window selector — offering
+    /// windows with nothing behind them would just render blank charts.
+    pub async fn trend_windows_for_hotel(
+        pool: &PgPool,
+        hotel_id: Uuid,
+    ) -> AppResult<Vec<TrendWindow>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT days_in_advance, SUM(sample_count)::bigint AS sample_count
+            FROM mv_hotel_daily_avg_price
+            WHERE hotel_id = $1
+            GROUP BY days_in_advance
+            ORDER BY sample_count DESC, days_in_advance ASC
+            "#,
+        )
+        .bind(hotel_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(rows
+            .iter()
+            .map(|r| TrendWindow {
+                days_in_advance: r.get("days_in_advance"),
+                sample_count: r.get("sample_count"),
+            })
+            .collect())
+    }
+
     /// REQ-002 F-008 / REQ-003 F-002 — per-hotel trend, backed by
     /// mv_hotel_daily_avg_price (fast, pre-aggregated).
+    /// `booking_window` restricts to one days-in-advance value so the
+    /// series compare like for like — without it, providers covering
+    /// different windows get plotted against each other (ADR-013).
     pub async fn trend_for_hotel(
         pool: &PgPool,
         hotel_id: Uuid,
         source_filter: Option<&str>,
         days: i32,
+        booking_window: Option<i32>,
     ) -> AppResult<Vec<PriceTrendPoint>> {
         let rows = sqlx::query(
             r#"
-            SELECT source, day, avg_price_thb::float8 as avg_price_thb,
+            SELECT source, day, days_in_advance,
+                   avg_price_thb::float8 as avg_price_thb,
                    min_price_thb::float8 as min_price_thb, max_price_thb::float8 as max_price_thb,
                    sample_count
             FROM mv_hotel_daily_avg_price
             WHERE hotel_id = $1
               AND day >= NOW() - ($2 || ' days')::interval
               AND ($3::text IS NULL OR source = $3)
+              AND ($4::int IS NULL OR days_in_advance = $4)
             ORDER BY day ASC
             "#,
         )
         .bind(hotel_id)
         .bind(days.to_string())
         .bind(source_filter)
+        .bind(booking_window)
         .fetch_all(pool)
         .await?;
 
@@ -238,6 +288,7 @@ impl PriceHistoryRepo {
             .map(|row| PriceTrendPoint {
                 source: row.get("source"),
                 day: row.get("day"),
+                days_in_advance: row.get("days_in_advance"),
                 avg_price_thb: row.get("avg_price_thb"),
                 min_price_thb: row.get("min_price_thb"),
                 max_price_thb: row.get("max_price_thb"),

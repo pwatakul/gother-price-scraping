@@ -90,6 +90,8 @@ impl Scraper for MockScraper {
                     params.hotel_name.replace(' ', "-").to_lowercase()
                 )),
                 who_id: None,
+                // Stamped by the registry loop from the factory name (ADR-011).
+                via_method: String::new(),
             });
         }
 

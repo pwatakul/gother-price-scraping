@@ -35,7 +35,6 @@ impl std::fmt::Display for ScrapeJobStatus {
 #[serde(rename_all = "lowercase")]
 pub enum ScrapeMethod {
     Serpapi,
-    Chatgpt,
     Gemini,
     Both,
 }
@@ -47,7 +46,7 @@ impl Default for ScrapeMethod {
 }
 
 /// Device dimension (REQ-001 F-023).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "device_type", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum Device {
@@ -58,6 +57,15 @@ pub enum Device {
 impl Default for Device {
     fn default() -> Self {
         Device::Desktop
+    }
+}
+
+impl Device {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Device::Desktop => "desktop",
+            Device::MobileWeb => "mobile_web",
+        }
     }
 }
 

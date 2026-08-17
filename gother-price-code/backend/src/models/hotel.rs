@@ -83,6 +83,15 @@ pub struct HotelDetail {
     pub trend: Vec<crate::models::PriceTrendPoint>,
 }
 
+/// Request to edit a hotel. Every field optional so a caller can change
+/// one without restating the others.
+#[derive(Debug, Deserialize)]
+pub struct UpdateHotelRequest {
+    pub name: Option<String>,
+    pub city: Option<String>,
+    pub country: Option<String>,
+}
+
 /// Request to create a new hotel
 #[derive(Debug, Deserialize)]
 pub struct CreateHotelRequest {
@@ -144,5 +153,39 @@ impl Hotel {
     /// master hotel list are lowercase free text (e.g. "thailand").
     pub fn is_domestic(&self) -> bool {
         self.country.trim().eq_ignore_ascii_case("thailand")
+    }
+}
+
+#[cfg(test)]
+mod normalize_tests {
+    use super::*;
+
+    /// `normalized_name` + city + country is what `find_or_create` matches
+    /// on, so an edit must recompute it. These pin the derivation the
+    /// update path depends on.
+    #[test]
+    fn normalization_ignores_case_and_generic_words() {
+        assert_eq!(
+            Hotel::normalize_name("Conrad Hotel Bangkok"),
+            Hotel::normalize_name("conrad  bangkok")
+        );
+    }
+
+    #[test]
+    fn ampersand_and_and_are_the_same_hotel() {
+        assert_eq!(
+            Hotel::normalize_name("JW Marriott Phuket Resort & Spa"),
+            Hotel::normalize_name("JW Marriott Phuket Resort and Spa")
+        );
+    }
+
+    /// A rename to a genuinely different hotel must not collide, or the
+    /// duplicate guard would reject legitimate edits.
+    #[test]
+    fn distinct_hotels_stay_distinct() {
+        assert_ne!(
+            Hotel::normalize_name("The Peninsula Bangkok"),
+            Hotel::normalize_name("The Sukhothai Bangkok")
+        );
     }
 }

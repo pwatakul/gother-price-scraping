@@ -35,6 +35,66 @@ fn build_message(job: &ScrapeJob, req: &CreateScrapeJobRequest) -> ScrapeJobMess
     }
 }
 
+/// One-night stay parameters every windowed run shares. A booking window
+/// only means something if the stay it measures is identical across
+/// windows (ADR-006/ADR-013).
+pub const WINDOW_LOS_NIGHTS: i64 = 1;
+
+/// Queue one scrape job per booking window, at one night each, and return
+/// the jobs actually created.
+///
+/// Shared by the cron scheduler and the manual "Run Price Search" so the
+/// two can never produce different job shapes for the same window — the
+/// only difference is which windows they pass and whether the cache is
+/// bypassed. Each window fails independently: one bad job must not cost
+/// the others.
+#[allow(clippy::too_many_arguments)]
+pub async fn queue_window_jobs(
+    state: &Arc<AppState>,
+    hotel_group_id: uuid::Uuid,
+    method: crate::models::scrape_job::ScrapeMethod,
+    windows: &[i32],
+    rooms: i32,
+    adults: i32,
+    now: chrono::DateTime<chrono::Utc>,
+    force_refresh: bool,
+) -> Vec<ScrapeJob> {
+    let mut jobs = Vec::new();
+
+    for &window in windows {
+        let checkin_date = now.date_naive() + chrono::Duration::days(window.max(0) as i64);
+        let checkout_date = checkin_date + chrono::Duration::days(WINDOW_LOS_NIGHTS);
+
+        let req = CreateScrapeJobRequest {
+            hotel_group_id,
+            checkin_date,
+            checkout_date,
+            rooms,
+            adults,
+            force_refresh,
+            method,
+            los_variants: vec![WINDOW_LOS_NIGHTS as i32],
+            device: Default::default(),
+            login_state: Default::default(),
+        };
+
+        match create_and_publish_job(state, &req).await {
+            Ok(job) => {
+                tracing::info!("Queued job {} (window +{}d, check-in {})", job.id, window, checkin_date);
+                jobs.push(job);
+            }
+            Err(e) => tracing::warn!(
+                "Failed to queue job for group {} (window +{}d): {}",
+                hotel_group_id,
+                window,
+                e
+            ),
+        }
+    }
+
+    jobs
+}
+
 /// Create a scrape job, initialize per-hotel status rows, and publish it
 /// to the queue. The single code path for "start a scrape job" — used by
 /// both the HTTP handler below and the scheduler (worker/scheduler.rs) so

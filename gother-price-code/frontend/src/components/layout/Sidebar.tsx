@@ -7,21 +7,14 @@ import { listHotelGroups } from '@/api/hotelGroups';
 
 interface NavItem {
   label: string;
-  to?: string;
+  to: string;
   badge?: string;
   badgeVariant?: 'red' | 'amber';
-  phaseTag?: string;
-  disabled?: boolean;
   /** Only the canonical entry for a route should show the "you are here"
    * highlight — secondary shortcuts that happen to route to the same
    * place shouldn't also light up, or every item pointing at the same
    * route would highlight together. */
   highlight?: boolean;
-}
-
-interface NavSection {
-  label?: string;
-  items: NavItem[];
 }
 
 function NavLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
@@ -38,28 +31,15 @@ function NavLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
           {item.badge}
         </span>
       )}
-      {item.phaseTag && (
-        <span className="ml-auto text-[9px] rounded-full px-1.5 py-0.5 bg-white/10 text-white/60">
-          {item.phaseTag}
-        </span>
-      )}
     </>
   );
-
-  if (item.disabled || !item.to) {
-    return (
-      <div className="flex items-center gap-2 px-2 py-1.5 rounded-[7px] text-[13px] text-white/40 opacity-40 pointer-events-none select-none">
-        {content}
-      </div>
-    );
-  }
 
   return (
     <Link
       to={item.to}
       className={cn(
         'flex items-center gap-2 px-2 py-1.5 rounded-[7px] text-[13px] text-white/80 hover:bg-sidebar-hover hover:text-white transition-colors',
-        isActive && 'bg-sky-500 text-white hover:bg-sky-500'
+        isActive && 'bg-brand-600 text-white hover:bg-brand-600'
       )}
     >
       {content}
@@ -70,7 +50,6 @@ function NavLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
 export function Sidebar() {
   const location = useLocation();
   const [hotelsExpanded, setHotelsExpanded] = useState(true);
-  const [analyticsExpanded, setAnalyticsExpanded] = useState(true);
   const { data: groups } = useQuery({
     queryKey: ['hotelGroups'],
     queryFn: listHotelGroups,
@@ -78,10 +57,10 @@ export function Sidebar() {
 
   const groupCount = groups?.length;
 
-  // The 3 main parts under Hotels: New Price Search (the group-hotel
-  // workflow — "New Price Search" and the old separate "Hotel Groups"
-  // row both went to "/", so they're merged into one), All Hotels, and
-  // the collapsible Analytics sub-menu (rendered separately below).
+  // Analytics is a single entry, not a sub-menu: its three former children
+  // (Market Overview / Parity Violations / Win Rate) all pointed at this
+  // same page, so none of them ever navigated anywhere different.
+  // Per-group analytics is reached from the group page instead.
   const hotelsItems: NavItem[] = [
     {
       label: 'New Price Search',
@@ -91,26 +70,7 @@ export function Sidebar() {
       badgeVariant: 'red',
     },
     { label: 'All Hotels', to: '/hotels', highlight: true },
-  ];
-
-  const analyticsItems: NavItem[] = [
-    // All 4 route to the same single-page dashboard (its sections cover
-    // overview/violations/booking-window/win-rate) — only the first is
-    // `highlight: true` so they don't all light up together on /analytics.
-    { label: 'Market Overview', to: '/analytics', highlight: true },
-    { label: 'Parity Violations', to: '/analytics' },
-    { label: 'Booking Window', to: '/analytics' },
-    { label: 'Win Rate', to: '/analytics' },
-  ];
-
-  const sections: NavSection[] = [
-    {
-      label: 'Data',
-      items: [
-        { label: 'Scheduled Scraping', disabled: true },
-        { label: 'Forecasting', disabled: true, phaseTag: 'Phase 4' },
-      ],
-    },
+    { label: 'Analytics', to: '/analytics', highlight: true },
   ];
 
   return (
@@ -119,7 +79,7 @@ export function Sidebar() {
         <button
           type="button"
           onClick={() => setHotelsExpanded((e) => !e)}
-          className="w-full flex items-center gap-2 px-2 py-2 rounded-[7px] bg-sky-500/90 text-white text-[13px] font-semibold"
+          className="w-full flex items-center gap-2 px-2 py-2 rounded-[7px] bg-brand-600/90 text-white text-[13px] font-semibold"
         >
           <span>🏨 Hotels</span>
           {hotelsExpanded ? (
@@ -135,53 +95,11 @@ export function Sidebar() {
               <NavLink
                 key={item.label}
                 item={item}
-                isActive={!!(item.highlight && item.to && location.pathname === item.to)}
+                isActive={!!(item.highlight && location.pathname === item.to)}
               />
             ))}
-
-            {/* Analytics — collapsible sub-menu */}
-            <button
-              type="button"
-              onClick={() => setAnalyticsExpanded((e) => !e)}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-[7px] text-[13px] text-white/80 hover:bg-sidebar-hover hover:text-white transition-colors"
-            >
-              <span>Analytics</span>
-              {analyticsExpanded ? (
-                <ChevronDown className="ml-auto h-3.5 w-3.5 text-white/40" />
-              ) : (
-                <ChevronRight className="ml-auto h-3.5 w-3.5 text-white/40" />
-              )}
-            </button>
-            {analyticsExpanded && (
-              <div className="ml-3 border-l border-white/10 pl-2">
-                {analyticsItems.map((item) => (
-                  <NavLink
-                    key={item.label}
-                    item={item}
-                    isActive={!!(item.highlight && item.to && location.pathname === item.to)}
-                  />
-                ))}
-              </div>
-            )}
           </div>
         )}
-
-        {sections.map((section, i) => (
-          <div key={i} className="mt-4">
-            {section.label && (
-              <div className="px-2 mb-1 text-[10px] uppercase tracking-wide text-white/40 font-semibold">
-                {section.label}
-              </div>
-            )}
-            {section.items.map((item) => (
-              <NavLink
-                key={item.label}
-                item={item}
-                isActive={!!(item.highlight && item.to && location.pathname === item.to)}
-              />
-            ))}
-          </div>
-        ))}
 
         <div className="mt-4 pt-3 border-t border-white/10 space-y-1">
           <div className="flex items-center gap-2 px-2 py-1.5 rounded-[7px] text-[13px] text-white/40 opacity-40 pointer-events-none select-none">

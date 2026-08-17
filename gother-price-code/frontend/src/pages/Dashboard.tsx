@@ -22,6 +22,7 @@ import {
   createHotelGroupWithExcel,
   deleteHotelGroup,
 } from '@/api/hotelGroups';
+import { listHotels } from '@/api/hotelDirectory';
 import { formatRelativeTime } from '@/utils/format';
 
 export function Dashboard() {
@@ -38,6 +39,13 @@ export function Dashboard() {
     queryFn: listHotelGroups,
   });
 
+  // System-wide hotel count for the KPI. limit=1 because only `total` is
+  // used — the rows are discarded.
+  const { data: hotelDirectory } = useQuery({
+    queryKey: ['hotels', 'total'],
+    queryFn: () => listHotels({ limit: 1 }),
+  });
+
   const filteredGroups = useMemo(() => {
     if (!groups) return groups;
     const q = search.trim().toLowerCase();
@@ -50,7 +58,9 @@ export function Dashboard() {
   // KPIs — only real, backed-by-data metrics. No fabricated win-rate or
   // parity-violation numbers (that's REQ-003, not built).
   const totalGroups = groups?.length ?? 0;
-  const totalHotels = groups?.reduce((sum, g) => sum + g.hotel_count, 0) ?? 0;
+  // Counted system-wide, not by summing group membership: a hotel in two
+  // groups would be counted twice, and a hotel in no group not at all.
+  const totalHotels = hotelDirectory?.total ?? 0;
   const lastScrapedAt = groups?.reduce<string | null>((latest, g) => {
     if (!g.last_scraped_at) return latest;
     if (!latest || g.last_scraped_at > latest) return g.last_scraped_at;
@@ -115,8 +125,8 @@ export function Dashboard() {
                 New Group
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <form onSubmit={handleCreate}>
+            <DialogContent className="sm:max-w-lg">
+              <form onSubmit={handleCreate} className="min-w-0">
                 <DialogHeader>
                   <DialogTitle>Create Hotel Group</DialogTitle>
                   <DialogDescription>
@@ -184,8 +194,8 @@ export function Dashboard() {
       <div className="grid grid-cols-3 gap-3 mb-6">
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-sky-50 flex items-center justify-center">
-              <Building2 className="h-4 w-4 text-sky-600" />
+            <div className="h-9 w-9 rounded-full bg-brand-50 flex items-center justify-center">
+              <Building2 className="h-4 w-4 text-brand-600" />
             </div>
             <div>
               <div className="text-[26px] font-bold leading-none">{totalGroups}</div>
@@ -195,8 +205,8 @@ export function Dashboard() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-sky-50 flex items-center justify-center">
-              <HotelIcon className="h-4 w-4 text-sky-600" />
+            <div className="h-9 w-9 rounded-full bg-brand-50 flex items-center justify-center">
+              <HotelIcon className="h-4 w-4 text-brand-600" />
             </div>
             <div>
               <div className="text-[26px] font-bold leading-none">{totalHotels}</div>
@@ -206,8 +216,8 @@ export function Dashboard() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-sky-50 flex items-center justify-center">
-              <Clock className="h-4 w-4 text-sky-600" />
+            <div className="h-9 w-9 rounded-full bg-brand-50 flex items-center justify-center">
+              <Clock className="h-4 w-4 text-brand-600" />
             </div>
             <div>
               <div className="text-[26px] font-bold leading-none">
@@ -248,7 +258,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => setIsCreateOpen(true)}
-              className="border-2 border-dashed border-slate-300 bg-[#f8fafc] rounded-[10px] flex items-center justify-center py-6 text-slate-400 hover:border-sky-400 hover:text-sky-600 transition-colors"
+              className="border-2 border-dashed border-slate-300 bg-[#f8fafc] rounded-[10px] flex items-center justify-center py-6 text-slate-400 hover:border-brand-400 hover:text-brand-600 transition-colors"
             >
               <div className="text-center">
                 <div className="text-2xl mb-1">＋</div>

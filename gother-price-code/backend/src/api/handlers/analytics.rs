@@ -17,7 +17,8 @@ use crate::api::router::AppState;
 use crate::db::MaterializedViewRepo;
 use crate::error::AppResult;
 use crate::models::{
-    BookingWindowRow, HeatmapCell, MarketOverview, MarketPositionEntry, ParityViolationRow, WinRateRow,
+    BookingWindowRow, HeatmapCell, MarketOverview, MarketPositionEntry, ParityViolationRow,
+    ProviderBenchmarkRow, WinRateRow,
 };
 
 #[derive(Deserialize)]
@@ -55,6 +56,16 @@ pub async fn heatmap(
 /// GET /analytics/win-rate — F-005
 pub async fn win_rate(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<WinRateRow>>> {
     let rows = MaterializedViewRepo::win_rate(&state.db).await?;
+    Ok(Json(rows))
+}
+
+/// GET /analytics/provider-benchmark — who is cheapest, and by how much.
+/// Gother-independent, so it works before the Gother API is connected.
+pub async fn provider_benchmark(
+    State(state): State<Arc<AppState>>,
+    Query(filter): Query<GroupFilter>,
+) -> AppResult<Json<Vec<ProviderBenchmarkRow>>> {
+    let rows = MaterializedViewRepo::provider_benchmark(&state.db, filter.hotel_group_id).await?;
     Ok(Json(rows))
 }
 

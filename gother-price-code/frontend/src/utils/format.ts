@@ -86,7 +86,7 @@ export function getStatusColor(status: string): string {
     case 'cancelled':
       return 'text-red-600 bg-red-100';
     case 'processing':
-      return 'text-sky-700 bg-sky-100';
+      return 'text-brand-700 bg-brand-100';
     case 'pending':
       return 'text-[#854d0e] bg-[#fef9c3]';
     default:

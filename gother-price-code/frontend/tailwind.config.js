@@ -15,6 +15,21 @@ export default {
     },
     extend: {
       colors: {
+        /* Gother brand red, taken from gother.com's own tokens:
+           --heroui-primary: 6 74.07% 42.35% (= #bc2c1c, the 600 step),
+           with their #fc3b26 / #dd3422 highlights as 400/500. */
+        brand: {
+          50: "#fdeeec",
+          100: "#fcddd9",
+          200: "#f8c0b9",
+          300: "#f48a7c",
+          400: "#fc4327",
+          500: "#dd3522",
+          600: "#bc2c1c",
+          700: "#972317",
+          800: "#761d13",
+          900: "#57160f",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

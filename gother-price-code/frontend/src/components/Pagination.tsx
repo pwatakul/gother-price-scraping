@@ -88,7 +88,7 @@ export function Pagination({
                 onClick={() => onPageChange(p)}
                 className={cn(
                   'h-8 min-w-8 px-2 rounded-[7px] text-xs font-medium',
-                  p === page ? 'bg-sky-500 text-white' : 'text-muted-foreground hover:bg-muted'
+                  p === page ? 'bg-brand-600 text-white' : 'text-muted-foreground hover:bg-muted'
                 )}
               >
                 {p + 1}

@@ -36,6 +36,13 @@ pub struct ScrapeResult {
     /// WHO ID, only ever populated by the Gother scraper (REQ-001 F-025).
     #[serde(default)]
     pub who_id: Option<String>,
+    /// Which scraper actually produced this row ("serpapi"/"gemini"/…).
+    /// Scrapers leave this blank; the registry loop stamps it from the
+    /// factory name so provenance cannot disagree with reality (ADR-011).
+    /// `serde(default)` keeps Redis entries cached before this field
+    /// deserializable.
+    #[serde(default)]
+    pub via_method: String,
 }
 
 /// Trait for price scrapers

@@ -3,7 +3,9 @@
 //! Database operations for hotels.
 
 use crate::error::{AppError, AppResult};
-use crate::models::{CreateHotelRequest, Hotel, HotelWithPrice, MasterHotelImportRow};
+use crate::models::{
+    CreateHotelRequest, Hotel, HotelWithPrice, MasterHotelImportRow, UpdateHotelRequest,
+};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -114,6 +116,69 @@ impl HotelRepo {
         .bind(&req.name)
         .bind(&req.city)
         .bind(&req.country)
+        .bind(&normalized_name)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(hotel_from_row(&row))
+    }
+
+    /// Update a hotel's name/city/country.
+    ///
+    /// `normalized_name` is derived from the name and, together with city
+    /// and country, is the key `find_or_create` matches on. It must be
+    /// recomputed here — leaving it stale would make a renamed hotel
+    /// invisible to matching, and the next import would silently create a
+    /// duplicate of it.
+    ///
+    /// Rejects a change that would collide with a different hotel on that
+    /// same triple: nothing in the schema enforces it, and two hotels
+    /// sharing it makes `find_or_create` pick between them arbitrarily.
+    pub async fn update(
+        pool: &PgPool,
+        id: Uuid,
+        req: &UpdateHotelRequest,
+    ) -> AppResult<Hotel> {
+        let current = Self::get_by_id(pool, id).await?;
+
+        let name = req.name.clone().unwrap_or(current.name);
+        let city = req.city.clone().unwrap_or(current.city);
+        let country = req.country.clone().unwrap_or(current.country);
+        let normalized_name = Hotel::normalize_name(&name);
+
+        let clash = sqlx::query(
+            r#"
+            SELECT id FROM hotels
+            WHERE normalized_name = $1 AND city = $2 AND country = $3 AND id <> $4
+            LIMIT 1
+            "#,
+        )
+        .bind(&normalized_name)
+        .bind(&city)
+        .bind(&country)
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+
+        if clash.is_some() {
+            return Err(AppError::Validation(format!(
+                "Another hotel in {city}, {country} already matches \"{name}\" — \
+                 rename it something more specific, or remove the duplicate."
+            )));
+        }
+
+        let row = sqlx::query(&format!(
+            r#"
+            UPDATE hotels
+            SET name = $2, city = $3, country = $4, normalized_name = $5
+            WHERE id = $1
+            RETURNING {HOTEL_COLUMNS}
+            "#
+        ))
+        .bind(id)
+        .bind(&name)
+        .bind(&city)
+        .bind(&country)
         .bind(&normalized_name)
         .fetch_one(pool)
         .await?;

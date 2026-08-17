@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::api::router::AppState;
 use crate::db::PriceHistoryRepo;
 use crate::error::AppResult;
-use crate::models::{PriceHistoryListResponse, PriceHistoryQuery, PriceTrendPoint};
+use crate::models::{PriceHistoryListResponse, PriceHistoryQuery, PriceTrendPoint, TrendWindow};
 
 /// GET /price-history — filtered, paginated raw history rows (used by the
 /// full price-history table on the hotel detail page).
@@ -30,6 +30,9 @@ pub struct TrendQuery {
     pub source: Option<String>,
     #[serde(default = "default_days")]
     pub days: i32,
+    /// Days-in-advance to restrict to. Omit only when a mixed-window view
+    /// is genuinely wanted — the UI always sends one (ADR-013).
+    pub booking_window: Option<i32>,
 }
 
 fn default_days() -> i32 {
@@ -43,8 +46,19 @@ pub async fn hotel_trend(
     Query(query): Query<TrendQuery>,
 ) -> AppResult<Json<Vec<PriceTrendPoint>>> {
     let points =
-        PriceHistoryRepo::trend_for_hotel(&state.db, id, query.source.as_deref(), query.days).await?;
+        PriceHistoryRepo::trend_for_hotel(&state.db, id, query.source.as_deref(), query.days, query.booking_window)
+            .await?;
     Ok(Json(points))
+}
+
+/// GET /price-history/hotel/:id/trend/windows — booking windows that have
+/// data for this hotel, most samples first.
+pub async fn hotel_trend_windows(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<Vec<TrendWindow>>> {
+    let windows = PriceHistoryRepo::trend_windows_for_hotel(&state.db, id).await?;
+    Ok(Json(windows))
 }
 
 #[derive(serde::Deserialize)]
@@ -82,13 +96,14 @@ pub async fn export_price_history(
     }
 
     let mut csv = String::from(
-        "hotel_id,source,room_type,price_thb,original_price,currency,checkin_date,checkout_date,rooms,adults,scraped_at\n",
+        "hotel_id,source,via_method,room_type,price_thb,original_price,currency,checkin_date,checkout_date,rooms,adults,device,scraped_at\n",
     );
     for r in &rows {
         csv.push_str(&format!(
-            "{},{},{},{},{},{},{},{},{},{},{}\n",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
             r.hotel_id,
             r.source,
+            r.via_method,
             r.room_type.replace(',', " "),
             r.price_thb,
             r.original_price.map(|p| p.to_string()).unwrap_or_default(),
@@ -97,6 +112,7 @@ pub async fn export_price_history(
             r.checkout_date,
             r.rooms,
             r.adults,
+            r.device.as_str(),
             r.scraped_at,
         ));
     }

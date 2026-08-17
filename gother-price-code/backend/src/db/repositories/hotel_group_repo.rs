@@ -3,29 +3,53 @@
 //! Database operations for hotel groups.
 
 use crate::error::{AppError, AppResult};
-use crate::models::{HotelGroup, HotelGroupWithCount, CreateHotelGroupRequest, UpdateHotelGroupRequest};
+use crate::models::{HotelGroup, HotelGroupWithCount, CreateHotelGroupRequest, UpdateGroupSearchConfigRequest, UpdateHotelGroupRequest};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 /// Hotel Group Repository
 pub struct HotelGroupRepo;
 
+/// Every column of hotel_groups, including the saved search config
+/// (ADR-012). Kept in one place so the three read paths cannot drift.
+const COLUMNS: &str = "id, name, description, search_method, search_days_ahead, \
+    search_rooms, search_adults, created_at, updated_at";
+
+fn from_row(row: &sqlx::postgres::PgRow) -> HotelGroup {
+    HotelGroup {
+        id: row.get("id"),
+        name: row.get("name"),
+        description: row.get("description"),
+        search_method: row.get("search_method"),
+        search_days_ahead: row.get("search_days_ahead"),
+        search_rooms: row.get("search_rooms"),
+        search_adults: row.get("search_adults"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    }
+}
+
 impl HotelGroupRepo {
     /// List all hotel groups with hotel counts
     pub async fn list_all(pool: &PgPool) -> AppResult<Vec<HotelGroupWithCount>> {
+        // Correlated subqueries rather than two LEFT JOINs + GROUP BY.
+        // Joining members *and* jobs produced a cartesian product, so
+        // COUNT(hgm.id) returned members × jobs — a 20-hotel group showed
+        // 300 once it had 15 scrape jobs. Counting per-table keeps each
+        // aggregate independent, and avoids the row fan-out entirely as
+        // job history grows (REQ-005 targets 2200 hotels).
         let rows = sqlx::query(
             r#"
-            SELECT 
+            SELECT
                 hg.id,
                 hg.name,
                 hg.description,
-                COUNT(hgm.id)::bigint as hotel_count,
-                MAX(sj.created_at) as last_scraped_at,
+                (SELECT COUNT(*) FROM hotel_group_members m
+                  WHERE m.hotel_group_id = hg.id)::bigint as hotel_count,
+                (SELECT MAX(j.created_at) FROM scrape_jobs j
+                  WHERE j.hotel_group_id = hg.id) as last_scraped_at,
                 hg.created_at
             FROM hotel_groups hg
-            LEFT JOIN hotel_group_members hgm ON hg.id = hgm.hotel_group_id
-            LEFT JOIN scrape_jobs sj ON hg.id = sj.hotel_group_id
-            GROUP BY hg.id
             ORDER BY hg.created_at DESC
             "#
         )
@@ -49,48 +73,36 @@ impl HotelGroupRepo {
 
     /// Get a single hotel group by ID
     pub async fn get_by_id(pool: &PgPool, id: Uuid) -> AppResult<HotelGroup> {
-        let row = sqlx::query(
+        let row = sqlx::query(&format!(
             r#"
-            SELECT id, name, description, created_at, updated_at
+            SELECT {COLUMNS}
             FROM hotel_groups
             WHERE id = $1
             "#
-        )
+        ))
         .bind(id)
         .fetch_optional(pool)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Hotel group {} not found", id)))?;
 
-        Ok(HotelGroup {
-            id: row.get("id"),
-            name: row.get("name"),
-            description: row.get("description"),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        })
+        Ok(from_row(&row))
     }
 
     /// Create a new hotel group
     pub async fn create(pool: &PgPool, req: &CreateHotelGroupRequest) -> AppResult<HotelGroup> {
-        let row = sqlx::query(
+        let row = sqlx::query(&format!(
             r#"
             INSERT INTO hotel_groups (name, description)
             VALUES ($1, $2)
-            RETURNING id, name, description, created_at, updated_at
+            RETURNING {COLUMNS}
             "#
-        )
+        ))
         .bind(&req.name)
         .bind(&req.description)
         .fetch_one(pool)
         .await?;
 
-        Ok(HotelGroup {
-            id: row.get("id"),
-            name: row.get("name"),
-            description: row.get("description"),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        })
+        Ok(from_row(&row))
     }
 
     /// Update a hotel group
@@ -99,16 +111,16 @@ impl HotelGroupRepo {
         id: Uuid,
         req: &UpdateHotelGroupRequest,
     ) -> AppResult<HotelGroup> {
-        let row = sqlx::query(
+        let row = sqlx::query(&format!(
             r#"
             UPDATE hotel_groups
             SET 
                 name = COALESCE($2, name),
                 description = COALESCE($3, description)
             WHERE id = $1
-            RETURNING id, name, description, created_at, updated_at
+            RETURNING {COLUMNS}
             "#
-        )
+        ))
         .bind(id)
         .bind(&req.name)
         .bind(&req.description)
@@ -116,13 +128,37 @@ impl HotelGroupRepo {
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Hotel group {} not found", id)))?;
 
-        Ok(HotelGroup {
-            id: row.get("id"),
-            name: row.get("name"),
-            description: row.get("description"),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-        })
+        Ok(from_row(&row))
+    }
+
+    /// Update only the saved price-search config (ADR-012). Separate from
+    /// `update` so renaming a group cannot clobber its search settings.
+    pub async fn update_search_config(
+        pool: &PgPool,
+        id: Uuid,
+        req: &UpdateGroupSearchConfigRequest,
+    ) -> AppResult<HotelGroup> {
+        let row = sqlx::query(&format!(
+            r#"
+            UPDATE hotel_groups
+            SET search_method     = COALESCE($2, search_method),
+                search_days_ahead = COALESCE($3, search_days_ahead),
+                search_rooms      = COALESCE($4, search_rooms),
+                search_adults     = COALESCE($5, search_adults)
+            WHERE id = $1
+            RETURNING {COLUMNS}
+            "#
+        ))
+        .bind(id)
+        .bind(req.search_method)
+        .bind(req.search_days_ahead.as_deref())
+        .bind(req.search_rooms)
+        .bind(req.search_adults)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Hotel group {} not found", id)))?;
+
+        Ok(from_row(&row))
     }
 
     /// Delete a hotel group

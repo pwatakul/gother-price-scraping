@@ -3,6 +3,7 @@
 //! Defines all HTTP routes and creates the Axum router.
 
 use axum::{
+    middleware,
     routing::{delete, get, post, put},
     Router,
 };
@@ -44,10 +45,20 @@ pub fn create_router(state: AppState) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    // API routes
-    let api_routes = Router::new()
-        // Health check
+    // The only two routes reachable without a session: the health probe (a
+    // load balancer has no cookie) and login itself (you can't authenticate to
+    // authenticate). Everything else goes in `api_routes` below, which is
+    // wrapped in `require_auth` as a whole — so a route added later is
+    // protected by default rather than by remembering to protect it.
+    let public_routes = Router::new()
         .route("/health", get(handlers::health::health_check))
+        .route("/auth/login", post(handlers::auth::login))
+        .route("/auth/logout", post(handlers::auth::logout));
+
+    // API routes (authenticated)
+    let api_routes = Router::new()
+        .route("/auth/me", get(handlers::auth::me))
+        .route("/auth/change-password", post(handlers::auth::change_password))
         // Hotel Groups
         .route("/hotel-groups", get(handlers::hotel_groups::list_groups))
         .route("/hotel-groups", post(handlers::hotel_groups::create_group))
@@ -59,6 +70,15 @@ pub fn create_router(state: AppState) -> Router {
         .route("/hotel-groups/:id/hotels", post(handlers::hotel_groups::add_hotel))
         .route("/hotel-groups/:group_id/hotels/:hotel_id", delete(handlers::hotel_groups::remove_hotel))
         .route("/hotel-groups/:id/jobs", get(handlers::hotel_groups::list_jobs))
+        // Saved per-group price search (ADR-012): edit it, then run it.
+        .route(
+            "/hotel-groups/:id/search-config",
+            put(handlers::hotel_groups::update_search_config),
+        )
+        .route(
+            "/hotel-groups/:id/search-runs",
+            post(handlers::hotel_groups::run_saved_search),
+        )
         // Hotels
         .route("/hotels/search", get(handlers::hotels::search_hotels))
         // Hotel Directory (REQ-007 — global "All Hotels" page)
@@ -67,6 +87,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/hotels/cities", get(handlers::hotel_directory::list_cities))
         .route("/hotels/export", get(handlers::hotel_directory::export_hotels))
         .route("/hotels/:id", get(handlers::hotel_directory::get_hotel_detail))
+        .route("/hotels/:id", put(handlers::hotel_directory::update_hotel))
         // Scrape Jobs
         .route("/scrape-jobs", post(handlers::scrape_jobs::create_job))
         .route("/scrape-jobs/with-overrides", post(handlers::scrape_jobs::create_job_with_overrides))
@@ -79,6 +100,10 @@ pub fn create_router(state: AppState) -> Router {
         // Price History (REQ-002 F-007/F-008, REQ-005 F-006)
         .route("/price-history", get(handlers::price_history::list_price_history))
         .route("/price-history/hotel/:id/trend", get(handlers::price_history::hotel_trend))
+        .route(
+            "/price-history/hotel/:id/trend/windows",
+            get(handlers::price_history::hotel_trend_windows),
+        )
         .route("/export/price-history", get(handlers::price_history::export_price_history))
         // Scheduled Scrape Configs (REQ-002 F-003/F-004)
         .route(
@@ -97,18 +122,38 @@ pub fn create_router(state: AppState) -> Router {
             "/scheduled-scrape-configs/:id",
             delete(handlers::scheduled_scrape_configs::delete_config),
         )
+        // Manual trigger (REQ-008 F-010) — fires the standard grid now,
+        // without disturbing the cron cadence.
+        .route(
+            "/scheduled-scrape-configs/:id/run",
+            post(handlers::scheduled_scrape_configs::run_config),
+        )
         // Analytics (REQ-003)
         .route("/analytics/overview", get(handlers::analytics::overview))
         .route("/analytics/market-position", get(handlers::analytics::market_position))
         .route("/analytics/heatmap", get(handlers::analytics::heatmap))
         .route("/analytics/win-rate", get(handlers::analytics::win_rate))
+        // Gother-independent leaderboard: who is cheapest, and by how much.
+        .route(
+            "/analytics/provider-benchmark",
+            get(handlers::analytics::provider_benchmark),
+        )
         .route("/analytics/parity-violations", get(handlers::analytics::parity_violations))
         .route("/analytics/booking-window/:hotel_id", get(handlers::analytics::booking_window))
         .route("/analytics/export", get(handlers::analytics::export));
 
+    let state = Arc::new(state);
+
+    // `route_layer` runs only for routes this router actually matches, so an
+    // unknown path still 404s instead of being turned into a 401.
+    let api_routes = api_routes.route_layer(middleware::from_fn_with_state(
+        state.clone(),
+        crate::api::middleware::require_auth,
+    ));
+
     Router::new()
-        .nest("/api", api_routes)
+        .nest("/api", public_routes.merge(api_routes))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
-        .with_state(Arc::new(state))
+        .with_state(state)
 }

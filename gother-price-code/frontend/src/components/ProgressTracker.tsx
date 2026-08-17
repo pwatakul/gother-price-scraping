@@ -28,7 +28,7 @@ function statusIcon(status: HotelScrapeStatus) {
     case 'failed':
       return <XCircle className="h-4 w-4 text-red-600 shrink-0" />;
     case 'processing':
-      return <Loader2 className="h-4 w-4 text-sky-600 animate-spin shrink-0" />;
+      return <Loader2 className="h-4 w-4 text-brand-600 animate-spin shrink-0" />;
     default:
       return <Circle className="h-4 w-4 text-gray-300 shrink-0" />;
   }

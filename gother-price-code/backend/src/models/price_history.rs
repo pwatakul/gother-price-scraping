@@ -1,5 +1,6 @@
 //! Price History Model (REQ-002 / REQ-005)
 
+use crate::models::scrape_job::Device;
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -24,6 +25,11 @@ pub struct HotelPriceHistory {
     pub checkout_date: NaiveDate,
     pub rooms: i16,
     pub adults: i16,
+    pub device: Device,
+    /// Which scraper produced this row — "serpapi", "gemini", "gother",
+    /// "mock". Distinguishes a real scrape from an AI estimate used to
+    /// fill a blank; see ADR-011.
+    pub via_method: String,
     pub scrape_job_id: Option<Uuid>,
     pub scraped_at: DateTime<Utc>,
 }
@@ -48,6 +54,7 @@ pub struct PriceHistoryQuery {
     /// export, which already exists via GET /scrape-jobs/:id/export).
     pub hotel_group_id: Option<Uuid>,
     pub source: Option<String>,
+    pub device: Option<Device>,
     pub checkin_from: Option<NaiveDate>,
     pub checkin_to: Option<NaiveDate>,
     pub scraped_from: Option<DateTime<Utc>>,
@@ -76,8 +83,20 @@ pub struct PriceHistoryListResponse {
 pub struct PriceTrendPoint {
     pub source: String,
     pub day: DateTime<Utc>,
+    /// Days between the scrape and check-in. Carried so a chart can state
+    /// which booking window it is showing (ADR-013).
+    pub days_in_advance: i32,
     pub avg_price_thb: f64,
     pub min_price_thb: f64,
     pub max_price_thb: f64,
+    pub sample_count: i64,
+}
+
+/// A booking window present in a hotel's history, with how much data
+/// backs it — the UI builds its window selector from these rather than a
+/// hardcoded list, because manual runs create arbitrary offsets.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct TrendWindow {
+    pub days_in_advance: i32,
     pub sample_count: i64,
 }
