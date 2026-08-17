@@ -26,16 +26,17 @@ const BAD_CREDENTIALS: &str = "Invalid username or password";
 /// length is the part that actually helps.
 const MIN_PASSWORD_LEN: usize = 8;
 
-fn session_cookie(token: String) -> Cookie<'static> {
+fn session_cookie(token: String, secure: bool) -> Cookie<'static> {
     Cookie::build((SESSION_COOKIE, token))
         .http_only(true)
         .same_site(SameSite::Strict)
         .path("/")
         .max_age(time::Duration::hours(SESSION_HOURS))
-        // `secure` is intentionally off: the app is served over plain HTTP on
-        // localhost today, and a Secure cookie would simply never be sent,
-        // making login silently impossible. Turn this on when it moves to
-        // HTTPS.
+        // Driven by COOKIE_SECURE rather than hardcoded: production is served
+        // over HTTPS and must set it, while local development is plain HTTP
+        // where a Secure cookie would never be sent and login would silently
+        // fail.
+        .secure(secure)
         .build()
 }
 
@@ -67,7 +68,10 @@ pub async fn login(
     let token = issue_token(&user, &state.config.jwt_secret)?;
     info!("User '{}' signed in", user.username);
 
-    Ok((jar.add(session_cookie(token)), Json(to_response(&user))))
+    Ok((
+        jar.add(session_cookie(token, state.config.cookie_secure)),
+        Json(to_response(&user)),
+    ))
 }
 
 /// POST /api/auth/logout

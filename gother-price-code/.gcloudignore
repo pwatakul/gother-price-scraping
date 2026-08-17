@@ -1,0 +1,8 @@
+# Keep the Cloud Build upload small and free of secrets.
+.git
+.env
+.env.*
+!.env.example
+backend/target
+frontend/node_modules
+frontend/dist

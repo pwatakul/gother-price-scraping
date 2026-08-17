@@ -1,0 +1,88 @@
+# Production overlay — applied ON TOP of docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# What it changes:
+#   1. backend/frontend are PULLED from Artifact Registry, not built. The VM
+#      is a 2 GB e2-small; a Rust release build with LTO there would be slow
+#      and might not fit in memory. Cloud Build produces the amd64 images.
+#   2. Every published port is removed except Caddy's 80/443. The base file
+#      publishes 5432, 6379, 5672, 15672 and 8080 for local development — on
+#      a public VM that would put Postgres (password `postgres`) and the
+#      RabbitMQ management UI (guest/guest) straight on the internet. The GCP
+#      firewall blocks them too; this is the second layer.
+#      `ports: !reset []` requires Compose v2.24+ (installed by the VM
+#      startup script).
+#   3. restart: unless-stopped everywhere, so a VM reboot brings the stack
+#      back without intervention.
+#   4. Caddy fronts everything and obtains a Let's Encrypt certificate for
+#      $SITE_ADDRESS automatically.
+
+services:
+  postgres:
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      # Not `postgres`/`postgres`. The port is unpublished and firewalled, but
+      # a default credential is still the first thing anything that reaches
+      # the docker network would try.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+  redis:
+    ports: !reset []
+    restart: unless-stopped
+
+  rabbitmq:
+    ports: !reset []
+    restart: unless-stopped
+
+  backend:
+    build: !reset null
+    image: ${IMAGE_BACKEND}
+    ports: !reset []
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/hotel_scraper
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RUST_LOG: info
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8080
+      # Session cookies must be HTTPS-only now that there is HTTPS.
+      COOKIE_SECURE: "true"
+      ALLOWED_ORIGIN: https://${SITE_ADDRESS}
+
+  frontend:
+    build: !reset null
+    image: ${IMAGE_FRONTEND}
+    ports: !reset []
+    restart: unless-stopped
+    # nginx resolves `backend` once at startup and refuses to boot if the name
+    # does not resolve, so it must not start before the backend container
+    # exists. `restart: unless-stopped` covers the remaining case where the
+    # backend restarts later and takes nginx down with it.
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: hotel_scraper_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      # caddy_data holds the issued certificate and the ACME account key.
+      # Persisting it is what stops every restart from requesting a fresh
+      # certificate and walking into Let's Encrypt's rate limit.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+
+volumes:
+  caddy_data:
+  caddy_config:

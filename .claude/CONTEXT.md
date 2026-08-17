@@ -1,7 +1,7 @@
 ---
 title: Project Context
 type: context
-updated: 2026-08-08
+updated: 2026-08-17
 tags: [context, project-status]
 ---
 
@@ -22,28 +22,30 @@ Phase 3 (future)   → Flight price comparison
 All phases share the same job queue, price history store, and analytics dashboard.
 
 ## Current Status
-- Version: v0.3 (REQ-001 core, REQ-002 price history/scheduling, REQ-003 analytics dashboard, REQ-005 data platform incl. partition automation, REQ-007 hotel directory — all implemented)
-- Active Sprint: [[sprint-03]] (frontend/analytics work substantially complete ahead of schedule — see note below); [[sprint-04]] (demo polish) up next
-- Branch: main
-- Phase: Implementation — functionality largely complete; Part B (Cloud Run deployment) suspended indefinitely by user directive to focus on functionality first
-- **Submission Deadline: Aug 17, 2026**
-- Prize target: ฿120,000 (1st place)
+- Version: **v1.0 — submitted** (Gother Challenge 2026, 17 Aug 2026)
+- **Live: https://34-124-161-138.nip.io** — GCP, HTTPS, authenticated. See [[REQ-010-production-deployment]]
+- Submission document: [[SUBMISSION-v1.0]] — read this first for a full picture of what exists
+- Phase: Implementation complete for Phase 1 (hotels). Deployed and verified end to end
+- 26 migrations · 48 API endpoints · 8 screens · 78 backend tests passing
 
-> [!NOTE]
-> **2026-08-08**: Google Cloud Run deployment (Part B) suspended indefinitely per user directive — focus is on functionality. In this pass: REQ-002 (price history + scheduled scraping) and REQ-003 (analytics dashboard) fully implemented; scraper dispatch refactored into a pluggable adapter/registry pattern (`ScraperFactory` trait + `default_registry()` in `backend/src/scraper/registry.rs`); new global "All Hotels" page (REQ-007, `backend/src/api/handlers/hotel_directory.rs` + `frontend/src/pages/HotelsList.tsx`) with country/city filtering, search, numbered pagination (URL-synced), and export; sidebar reorganized (collapsible "Hotels" section: New Price Search / All Hotels / collapsible Analytics submenu; Import/Export tab removed); data export added for both per-hotel and per-group (across all jobs) price history; hotel detail page now shows the full paginated, filterable raw price-history table, not just the aggregated trend chart. Finally, [[REQ-005-v1.2]] closed the last flagged data-platform gap: `hotel_price_history` partition auto-creation is now automated via a daily background loop (`backend/src/worker/partition_manager.rs`), application-level and idempotent — no `pg_partman` dependency added, consistent with the standing decision against that extension. Verified live via docker: partitions ensured on startup, idempotent on restart (`pg_inherits` unchanged, no errors).
->
-> **2026-08-04**: REQ-001's core scraping/API/Excel/evidence scope (F-002, F-004, F-011, F-020, F-021–F-027) implemented — see [[REQ-001-v1.3]], [[ADR-001-scraper-choice]], [[ADR-003-hotel-list-import-format]], [[ADR-005-provider-specific-scraping]]. Migrations 007–010 added. Wink still has no real data source (stubbed blank), device/login-state dimensions are recorded but not verified to change actual scrape behavior, Gother WHO ID field not confirmed to exist upstream — see REQ-001-v1.3's Open Risks section (still open as of 2026-08-08).
->
-> **2026-07-30**: Deadline moved to Aug 17, 2026 (from May 15, 2026). Descoped, not schedulable by Aug 17: [[REQ-004-v1.0]] (multi-product/experiences) — its own doc gates on hotels/price history being stable, only true after Sprint 02. [[REQ-006-v1.0]] (forecasting) — requires 6 months of accumulated `hotel_price_history`, which cannot exist by Aug 17 regardless of engineering effort. Both remain descoped as of 2026-08-08.
->
-> **2026-07-27** (prior note): Raw brief data (`docs/raw/Req price scrapping - 17 July 26.xlsx`) parsed into [[REQ-001-v1.2]]. Managed data assets: `docs/data/hotel-list-2200.csv` (the 2200-hotel list) and `docs/data/example-raw-data-schema.md` + `docs/data/example-raw-data-sample.csv` (target scraper output schema).
+### Delivered since the 2026-08-08 note below
+| Change | Reference |
+|---|---|
+| ChatGPT scraper **removed**; AI demoted to a marked fallback with per-row `via_method` provenance | [[ADR-007-remove-chatgpt-scraper]], [[ADR-011-serpapi-primary-gemini-fallback]], [[REQ-001-v1.5]] |
+| Mock-scraper silent fallback **removed** — a missing key now fails loudly | [[ADR-008-no-silent-mock-fallback]] |
+| Device and member/login-state dimensions **dropped** (measured: zero price difference over 69 sources) | [[ADR-010-drop-device-and-member-dimensions]], [[REQ-008-v1.1]] |
+| Provider allowlist widened to 10, exact matching | [[ADR-009-widen-provider-allowlist]] |
+| Analytics rebased so comparisons are within one (hotel, check-in date) | [[ADR-013-booking-window-comparison-basis]] |
+| Per-group saved search config + per-group analytics | [[ADR-012-group-search-config]], [[REQ-003-v1.2]] |
+| Login / sessions / role field | [[ADR-014-cookie-session-authentication]], [[REQ-009-v1.0]] |
+| **GCP deployment — no longer suspended.** Single VM, Docker, auto-HTTPS | [[ADR-015-gcp-single-vm-deployment]], [[REQ-010-production-deployment]] |
 
 ## Gaps vs Competition Brief (must fix before demo)
 
 | # | Gap | Current State | Required by Brief | REQ |
 |---|-----|--------------|-------------------|-----|
 | 1 | **Excel per-row search params** | checkin/checkout/rooms/adults set at job level (same for all hotels) | Each Excel ROW can have its own checkin_date, checkout_date, rooms, adults | [[REQ-001-v1.2]] |
-| 2 | **Method 1: ChatGPT scraper** | Not implemented | Bonus points for implementing ChatGPT prompt method alongside SerpAPI | new REQ |
+| 2 | ~~**Method 1: ChatGPT scraper**~~ | **Closed — deliberately not shipped** | Bonus points offered, but AI-generated prices were measured as fabricated (3 OTAs at an identical ฿6,551 vs a true ฿6,773). AI retained only as a badged fallback | [[ADR-007-remove-chatgpt-scraper]] |
 | 3 | **Evidence column in results** | source_url stored but not prominently displayed | URL + scraped_at timestamp must be visible in UI table and Excel export | [[REQ-001-v1.2]] |
 | 4 | **Apple-to-apple comparison** | All results shown, no filtering by matching room type | Judges expect same room type compared across sources | [[REQ-001-v1.2]] |
 | 5 | **TripAdvisor API** | Not integrated | Example prompt uses TripAdvisor as a source — investigate if accessible | new REQ |
@@ -59,21 +61,21 @@ All phases share the same job queue, price history store, and analytics dashboar
 | Method | Status | Notes |
 |--------|--------|-------|
 | Method 2: SerpAPI + Gother API | ✅ Implemented | Core scraper already built |
-| Method 1: ChatGPT + Gother API | ❌ Not implemented | Bonus points — implement after Method 2 is solid |
+| Method 1: ChatGPT + Gother API | ⛔ Removed by decision | Not a gap — measured as fabricating prices. See [[ADR-007-remove-chatgpt-scraper]] and §6 of [[SUBMISSION-v1.0]] |
 
 ## Tech Stack
 - Backend: Rust + Axum, SQLx (PostgreSQL), Lapin (RabbitMQ), Redis
 - Frontend: TypeScript + React 18 + Vite, TanStack Query, Tailwind CSS, shadcn/ui (Radix UI), recharts, react-router-dom
-- Database: PostgreSQL (16 migrations: core schema, price_history + partitioning, currency_exchange_rates, scheduled_scrape_configs, materialized views)
-- External APIs: SerpAPI (Google Hotels), Gother internal API, OpenAI ChatGPT (Method 1 — bonus), optional Gemini normalization
+- Database: PostgreSQL 16 (**26 migrations**: core schema, price_history + partitioning, currency rates, scheduled configs, materialized views, group search config, users)
+- External APIs: SerpAPI (Google Hotels — authoritative), Gemini (marked fallback + room-type normalization), Gother internal API (awaiting credentials). **ChatGPT removed** — [[ADR-007-remove-chatgpt-scraper]]
 - Scraper dispatch: pluggable adapter/registry pattern — `ScraperFactory` trait + `default_registry()` (`backend/src/scraper/registry.rs`), stored in `AppState.scraper_registry`
-- Deployment: Docker Compose (postgres + redis + rabbitmq + backend + frontend via nginx) — Cloud Run deployment (Part B) suspended indefinitely, functionality-first
+- Deployment: Docker Compose locally; **live on GCP** (single e2-small VM, Caddy auto-HTTPS, Cloud Build → Artifact Registry) — [[ADR-015-gcp-single-vm-deployment]]
 
 ## What's already implemented
 - [x] PostgreSQL schema — all 16 migrations (core, price history + monthly partitioning, currency rates, scheduled scrape configs, materialized views)
 - [x] Rust models, DB repositories, Axum REST API (hotel groups, hotels, scrape jobs, templates, price history, scheduled scrape configs, analytics, hotel directory)
 - [x] RabbitMQ publisher + worker processor (parallel hotel scraping)
-- [x] SerpAPI + Gother API + ChatGPT scrapers; pluggable adapter/registry; mock fallback for dev
+- [x] SerpAPI (authoritative) + Gemini (badged fallback) + Gother API (awaiting credentials) scrapers; pluggable adapter/registry. Mock is **opt-in only** (`ENABLE_MOCK_SCRAPER`)
 - [x] Redis price caching
 - [x] Price normalizer (room type, meal plan, currency → THB) + optional Gemini AI normalization
 - [x] Excel import (hotel lists, ADR-003 format) + export (price comparison reports, per-hotel history, per-group history)
@@ -81,25 +83,28 @@ All phases share the same job queue, price history store, and analytics dashboar
 - [x] `scheduled_scrape_configs` + cron worker (`worker/scheduler.rs`) — [[REQ-002-v1.1]] F-003 / F-005
 - [x] Price history query + export API — [[REQ-002-v1.1]] F-007 / F-008, F-006
 - [x] `hotel_price_history` partition auto-creation (daily idempotent loop, no `pg_partman`) — [[REQ-005-v1.2]] F-002
-- [x] Materialized views for analytics (5 views: market position, daily avg price, win rate, booking window, parity violations) — [[REQ-005-v1.2]] F-003 / F-004, refreshed after every scrape job
+- [x] Materialized views for analytics (6 refreshed: market position, price-by-stay, daily avg price, win rate, booking window, parity violations) — [[REQ-005-v1.2]] F-003 / F-004, refreshed after every scrape job
 - [x] Market analytics dashboard — overview card, trend chart, position table, heatmap, date-range filter — [[REQ-003-v1.0]], `frontend/src/pages/AnalyticsDashboard.tsx`
 - [x] Global "All Hotels" directory page — country/city filters, search, URL-synced pagination, export — [[REQ-007-hotel-directory]], `frontend/src/pages/HotelsList.tsx`
 - [x] Hotel detail page — trend chart + full paginated/filterable raw price-history table — `frontend/src/pages/HotelDetail.tsx`
 - [x] React frontend — Dashboard, HotelGroupDetail, ReportView, HotelsList, HotelDetail, AnalyticsDashboard pages; reorganized sidebar (collapsible Hotels section: New Price Search / All Hotels / collapsible Analytics submenu)
 - [x] Docker Compose full stack
 - [ ] Multi-product support (experiences) — [[REQ-004-v1.0]] — Phase 2, descoped
-- [ ] Cloud Run deployment (Part B) — suspended indefinitely per user directive
+- [x] GCP deployment — single VM + Docker + auto-HTTPS, live — [[ADR-015-gcp-single-vm-deployment]]
 
 ## Requirements Index
 | Doc | Scope | Status |
 |-----|-------|--------|
-| [[REQ-001-v1.3]] | Hotel price scraping — core module | Active — core scraping/API/Excel/evidence implemented 2026-08-04 |
-| [[REQ-002-v1.1]] | Price history & automated scraping | Active — implemented 2026-08-08 |
-| [[REQ-003-v1.0]] | Market analytics dashboard | Active — implemented 2026-08-08 |
+| [[REQ-001-v1.5]] | Hotel price scraping — core module | Active — current version |
+| [[REQ-002-v1.3]] | Price history & automated scraping | Active — current version |
+| [[REQ-003-v1.2]] | Market analytics dashboard | Active — current version, incl. per-group analytics |
 | [[REQ-004-v1.0]] | Multi-product support (experiences, flights) | Descoped — blocked on REQ-001/002 stability per its own doc |
 | [[REQ-005-v1.2]] | Data platform & scalability | Active — implemented 2026-08-08, incl. partition automation (F-002) |
 | [[REQ-006-v1.0]] | Price forecasting & predictive analytics (Phase 4) | Descoped — requires 6mo of history data that can't exist by Aug 17 |
-| [[REQ-007-hotel-directory]] | Global hotel directory / "All Hotels" page | Active — implemented 2026-08-08 |
+| [[REQ-007-hotel-directory]] | Global hotel directory / "All Hotels" page | Active |
+| [[REQ-008-v1.1]] | Standardized booking-window tracking | Active |
+| [[REQ-009-v1.0]] | Login authentication + role field | Active — roles stored, not enforced |
+| [[REQ-010-production-deployment]] | Production deployment (GCP) | Active — live |
 
 ## Design Index
 | Doc | Scope | Status |
@@ -131,7 +136,6 @@ All phases share the same job queue, price history store, and analytics dashboar
 - `hotel_price_history` partitioned by month on `scraped_at` (not a flat table)
 - All prices in THB as the canonical currency
 - `scrape_jobs.method` column persisted in DB so results page always knows which scraper produced the data
-- ChatGPT scraper prompts for strict JSON (`ChatGptHotelPriceJson` schema) — no free-text parsing
 - Excel import: blank date/rooms/adults cells fall back to job-level `JobDefaults`
 - Report table: one row per hotel, cheapest price per OTA column, expandable for all room types + evidence
 
@@ -150,26 +154,27 @@ All phases share the same job queue, price history store, and analytics dashboar
 
 ## How to run the project
 ```bash
-# Start infrastructure
-cd gother-price-code && docker-compose up -d postgres redis rabbitmq
+cd gother-price-code
+cp .env.example .env
+#   SERPAPI_KEY  — required, the live price source (no mock fallback)
+#   JWT_SECRET   — required, openssl rand -base64 48 (backend refuses to boot without it)
+#   ADMIN_PASSWORD — optional; unset seeds admin/admin1234! and logs a warning
+docker compose up -d          # migrations run automatically at startup
+# → frontend http://localhost:3000   ·   backend http://localhost:8080
 
-# Backend (from gother-price-code/backend/)
-cp .env.example .env   # set SERPAPI_KEY, OPENAI_API_KEY, GOTHER_API_KEY, etc.
-cargo install sqlx-cli --no-default-features --features postgres
-sqlx migrate run
-cargo run
-
-# Frontend (from gother-price-code/frontend/)
-npm install && npm run dev
-
-# Tests
-cd gother-price-code/backend && cargo test
+cd backend && cargo test      # 78 tests
 ```
+
+Deploying to GCP: `./deploy.sh` from `gother-price-code/` — see [[REQ-010-production-deployment]].
 
 ## Notes for new contributors
 
-> [!NOTE]
-> If `SERPAPI_KEY` is empty, the worker uses `MockScraper` — returns random prices. Safe for dev without real keys.
+> [!WARNING]
+> **A missing `SERPAPI_KEY` now FAILS the scrape — it does not fall back to mock data.**
+> The old silent fallback reported 52/52 successes over 315 fabricated prices that were
+> indistinguishable from real ones. It was removed in [[ADR-008-no-silent-mock-fallback]].
+> The mock scraper still exists but is opt-in only, via `ENABLE_MOCK_SCRAPER=true`, and
+> logs a warning on every startup when enabled.
 
 - Code root: `gother-price-code/` (backend + frontend + docker-compose.yml)
 - Backend: port 8080 | Frontend: port 3000 (Vite proxies API)

@@ -56,6 +56,15 @@ pub struct Config {
     /// Overrides the seeded admin password on first startup. When unset the
     /// well-known default is used and logged at WARN.
     pub admin_password: Option<String>,
+    /// Adds `Secure` to the session cookie, so browsers only ever send it
+    /// over HTTPS. Defaults to false: local development is served over plain
+    /// HTTP, where a Secure cookie would simply never be sent and login would
+    /// fail with no visible cause. Set COOKIE_SECURE=true in production.
+    pub cookie_secure: bool,
+    /// Exact origin allowed to make cross-origin calls, e.g.
+    /// `https://34-1-2-3.nip.io`. When unset CORS stays permissive, which is
+    /// correct for localhost development.
+    pub allowed_origin: Option<String>,
 }
 
 impl Config {
@@ -139,6 +148,10 @@ impl Config {
             // boot is the safe failure.
             jwt_secret: read_jwt_secret()?,
             admin_password: env::var("ADMIN_PASSWORD").ok().filter(|p| !p.is_empty()),
+            cookie_secure: env::var("COOKIE_SECURE")
+                .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+                .unwrap_or(false),
+            allowed_origin: env::var("ALLOWED_ORIGIN").ok().filter(|o| !o.is_empty()),
         })
     }
 
@@ -168,6 +181,8 @@ impl Config {
             price_cache_ttl_seconds: 0,
             jwt_secret: "test-secret-that-is-long-enough-to-pass".to_string(),
             admin_password: None,
+            cookie_secure: false,
+            allowed_origin: None,
         }
     }
 }

@@ -3,6 +3,7 @@
 //! Defines all HTTP routes and creates the Axum router.
 
 use axum::{
+    http::{header, HeaderValue, Method},
     middleware,
     routing::{delete, get, post, put},
     Router,
@@ -39,11 +40,7 @@ impl AppState {
 
 /// Create the main application router
 pub fn create_router(state: AppState) -> Router {
-    // CORS configuration
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    let cors = build_cors(state.config.allowed_origin.as_deref());
 
     // The only two routes reachable without a session: the health probe (a
     // load balancer has no cookie) and login itself (you can't authenticate to
@@ -156,4 +153,61 @@ pub fn create_router(state: AppState) -> Router {
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+/// CORS policy.
+///
+/// With `ALLOWED_ORIGIN` set (production) the origin is named exactly and
+/// credentials are allowed, so the session cookie can ride along. Methods and
+/// headers must then be listed explicitly: tower-http **panics at layer
+/// construction** on `allow_credentials(true)` combined with a wildcard, and
+/// the CORS spec forbids that pairing because a wildcard plus credentials
+/// would let any site act as the signed-in user.
+///
+/// With it unset (local development) the permissive policy is kept. That
+/// branch cannot carry credentials either — browsers reject a credentialed
+/// request against a wildcard origin — so nothing is weakened by it.
+fn build_cors(allowed_origin: Option<&str>) -> CorsLayer {
+    match allowed_origin.and_then(|o| o.parse::<HeaderValue>().ok()) {
+        Some(origin) => CorsLayer::new()
+            .allow_origin(origin)
+            .allow_credentials(true)
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
+            .allow_headers([header::CONTENT_TYPE]),
+        None => CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // These assert "does not panic". CorsLayer validates its own combination
+    // eagerly, and an invalid one took down the whole server at startup in
+    // production rather than failing at compile time — so constructing both
+    // branches is the check that matters.
+
+    #[test]
+    fn production_cors_is_a_valid_combination() {
+        let _ = build_cors(Some("https://34-124-161-138.nip.io"));
+    }
+
+    #[test]
+    fn development_cors_is_a_valid_combination() {
+        let _ = build_cors(None);
+    }
+
+    #[test]
+    fn unparseable_origin_falls_back_to_permissive_instead_of_panicking() {
+        let _ = build_cors(Some("not a valid header value\n"));
+    }
 }

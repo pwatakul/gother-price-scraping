@@ -1,0 +1,23 @@
+# Caddy terminates TLS and proxies everything to the frontend container,
+# which serves the SPA and proxies /api on to the backend (see nginx.conf).
+#
+# SITE_ADDRESS is a hostname, not an IP — Caddy obtains and renews a Let's
+# Encrypt certificate for it automatically over the HTTP-01 challenge, which
+# is why port 80 stays open as well as 443. With nip.io, the hostname resolves
+# to the IP embedded in it, so no DNS record has to be created anywhere.
+
+{$SITE_ADDRESS} {
+	encode gzip
+
+	reverse_proxy frontend:80 {
+		# nginx and the backend see the original scheme and client IP rather
+		# than Caddy's, so redirects and access logs stay truthful.
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
